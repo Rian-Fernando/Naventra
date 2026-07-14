@@ -1,0 +1,13 @@
+{
+  "name": "Naventra — AI Air Traffic Command",
+  "short_name": "Naventra",
+  "description": "AI-native air traffic control console working live ADS-B traffic.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08080C",
+  "theme_color": "#08080C",
+  "icons": [
+    { "src": "/app-icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/apple-touch-icon-180.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

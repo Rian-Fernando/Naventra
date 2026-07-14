@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /proxy/
+
+Sitemap: https://naventra.rianfernando.com/sitemap.xml

@@ -1,7 +1,16 @@
 {
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "naventra-lake\\.vercel\\.app" }],
+      "destination": "https://naventra.rianfernando.com/:path*",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     { "source": "/proxy/wx/:path*", "destination": "https://aviationweather.gov/:path*" },
     { "source": "/proxy/adsblol/:path*", "destination": "https://api.adsb.lol/:path*" },
-    { "source": "/proxy/adsbfi/:path*", "destination": "https://opendata.adsb.fi/:path*" }
+    { "source": "/proxy/adsbfi/:path*", "destination": "https://opendata.adsb.fi/:path*" },
+    { "source": "/guide", "destination": "/index.html" }
   ]
 }

@@ -136,32 +136,30 @@ body {
   gap: 10px;
 }
 
-.brand-mark {
+.brand-logo {
   width: 30px;
   height: 30px;
-  border-radius: 6px;
-  display: grid;
-  place-items: center;
-  background: radial-gradient(circle at 35% 30%, rgba(61, 220, 151, 0.25), transparent 65%), var(--bg);
-  border: 1px solid var(--green-dim);
-  color: var(--green);
+  border-radius: 7px;
+  background: radial-gradient(circle at 30% 25%, #1c2230 0%, #111114 70%);
+  border: 1px solid #1e1e24;
+  padding: 2px;
 }
 
 .brand-name {
-  font-family: var(--font-display);
-  font-size: 21px;
+  font-family: 'Space Grotesk', var(--font-display), sans-serif;
+  font-size: 19px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: -0.01em;
   line-height: 1;
+  color: #f2f2f5;
 }
-
-.brand-name em { color: var(--green); font-style: normal; }
 
 .brand-sub {
   font-size: 9px;
   letter-spacing: 0.22em;
   color: var(--muted);
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .facility {
@@ -217,15 +215,16 @@ body {
 .kpi.ok b { color: var(--green); }
 .kpi.cyan b { color: var(--cyan); }
 
-.clockbox { text-align: right; line-height: 1.25; }
+.clockbox { text-align: right; line-height: 1.25; white-space: nowrap; }
 .clockbox .utc { font-size: 15px; color: var(--text); letter-spacing: 0.06em; }
-.clockbox .lbl { font-size: 9px; color: var(--muted); letter-spacing: 0.18em; }
+.clockbox .lbl { font-size: 8.5px; color: var(--muted); letter-spacing: 0.12em; }
 
 .livebtn {
   display: flex;
   align-items: center;
+  white-space: nowrap;
   gap: 7px;
-  padding: 6px 12px;
+  padding: 6px 10px;
   border-radius: 5px;
   border: 1px solid var(--green-dim);
   background: rgba(61, 220, 151, 0.07);
@@ -678,8 +677,9 @@ body {
 .nav-link {
   display: flex;
   align-items: center;
+  white-space: nowrap;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 6px 10px;
   border: 1px solid var(--line-bright);
   border-radius: 5px;
   color: var(--text-dim);
@@ -815,6 +815,16 @@ body {
 }
 .guide-terms dt { color: var(--green); font-weight: 600; font-size: 11px; letter-spacing: 0.05em; }
 .guide-terms dd { font-size: 11px; line-height: 1.6; }
+
+.guide-credit {
+  margin-top: 34px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+}
+.guide-credit a { color: var(--cyan); text-decoration: none; }
+.guide-credit a:hover { text-decoration: underline; }
 
 @media (max-width: 760px) {
   .guide-panels { grid-template-columns: 1fr; }

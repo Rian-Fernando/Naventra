@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { TowerControl, MapPin, BookOpen } from 'lucide-react';
+import { MapPin, BookOpen, ExternalLink } from 'lucide-react';
 import { AIRPORT_LIST } from '../data/airports.js';
 
 export default function Header({ airport, icao, setIcao, mode, source, forceSim, setForceSim, kpis, scorecard, onGuide }) {
@@ -18,9 +18,9 @@ export default function Header({ airport, icao, setIcao, mode, source, forceSim,
   return (
     <header className="header">
       <div className="brand">
-        <div className="brand-mark"><TowerControl size={17} /></div>
+        <img className="brand-logo" src="/naventra-mark.svg" alt="Naventra — control tower in a radar sweep" width="30" height="30" />
         <div>
-          <div className="brand-name">NAV<em>ENTRA</em></div>
+          <div className="brand-name">naventra</div>
           <div className="brand-sub">AI Air Traffic Command</div>
         </div>
       </div>
@@ -46,8 +46,11 @@ export default function Header({ airport, icao, setIcao, mode, source, forceSim,
         <span className="mono-sm" style={{ letterSpacing: 0 }}>{source ? `· ${source}` : ''}</span>
       </button>
 
-      <a className={`nav-link ${onGuide ? 'on' : ''}`} href={onGuide ? '#/' : '#/guide'}>
+      <a className={`nav-link ${onGuide ? 'on' : ''}`} href={onGuide ? '/' : '/guide'}>
         <BookOpen size={12} /> {onGuide ? 'CONSOLE' : 'GUIDE'}
+      </a>
+      <a className="nav-link" href="https://rianfernando.com" target="_blank" rel="noopener" title="Built by Rian Fernando">
+        <ExternalLink size={12} /> RIANFERNANDO.COM
       </a>
 
       <div className="kpis">

@@ -12,20 +12,45 @@ import AircraftDetail from './components/AircraftDetail.jsx';
 import ScorecardPanel from './components/ScorecardPanel.jsx';
 import Guide from './pages/Guide.jsx';
 
-function useHashRoute() {
-  const [route, setRoute] = useState(window.location.hash || '#/');
+// Path-based routing so /guide is a real, crawlable URL. Internal <a href>
+// clicks are intercepted into pushState; legacy #/guide links still land.
+function usePathRoute() {
+  const [route, setRoute] = useState(window.location.pathname);
   useEffect(() => {
-    const onHash = () => setRoute(window.location.hash || '#/');
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
+    if (window.location.hash.startsWith('#/guide')) {
+      window.history.replaceState(null, '', '/guide');
+      setRoute('/guide');
+    }
+    const onPop = () => setRoute(window.location.pathname);
+    const onClick = (e) => {
+      const a = e.target.closest('a');
+      if (!a || a.origin !== window.location.origin || a.target === '_blank') return;
+      e.preventDefault();
+      window.history.pushState(null, '', a.pathname);
+      setRoute(a.pathname);
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener('popstate', onPop);
+    document.addEventListener('click', onClick);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      document.removeEventListener('click', onClick);
+    };
   }, []);
   return route;
 }
 
 export default function App() {
   const atc = useAtcSystem();
-  const route = useHashRoute();
-  const onGuide = route.startsWith('#/guide');
+  const route = usePathRoute();
+  const onGuide = route.startsWith('/guide');
+
+  // Keep the canonical URL in step with the route.
+  useEffect(() => {
+    const link = document.querySelector('link[rel="canonical"]');
+    if (link) link.href = `https://naventra.rianfernando.com${onGuide ? '/guide' : '/'}`;
+    document.title = onGuide ? "Operator's Guide — Naventra" : 'Naventra — AI Air Traffic Command';
+  }, [onGuide]);
 
   return (
     <div className={`shell ${onGuide ? 'shell-guide' : ''}`}>

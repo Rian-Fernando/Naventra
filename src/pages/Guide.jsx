@@ -36,7 +36,7 @@ export default function Guide() {
   return (
     <div className="guide-wrap">
       <div className="guide">
-        <a className="guide-back" href="#/"><ArrowLeft size={13} /> BACK TO CONSOLE</a>
+        <a className="guide-back" href="/"><ArrowLeft size={13} /> BACK TO CONSOLE</a>
         <h1>Operator's Guide</h1>
         <p className="guide-lede">
           Naventra is an AI-native air traffic control console. It ingests <b>real, live ADS-B
@@ -95,8 +95,10 @@ export default function Guide() {
 
         <h2>Reading a target</h2>
         <p>
-          Each airborne target is a diamond (3D: a cone pointing along its heading) with a <b>velocity
-          leader</b> showing one minute of travel, a fading <b>history trail</b>, and a two-line data block:
+          Each target renders as a <b>top-down aircraft silhouette</b> pointing along its heading —
+          airliners as fixed-wing shapes, rotorcraft as a distinct helicopter shape (cabin, rotor and tail
+          boom) — with a <b>velocity leader</b> showing one minute of travel, a fading <b>history
+          trail</b>, and a two-line data block:
           callsign on top; altitude (with ↑/↓ climb arrows), ground speed and type below. Colors follow the
           legend — greens are inbound, cyan outbound, dim gray passing through, purple on the ground, red in
           conflict. In 3D, the vertical <b>stem</b> under each aircraft drops to its position on the ground
@@ -118,6 +120,11 @@ export default function Guide() {
           is unreachable — or you press the LIVE OPS button — a physics simulation takes over, seeded with
           the airport's real runway geometry and carrier mix, and is clearly labeled SIM.
           All sources are free and keyless; the entire system, including the AI core, runs in your browser.
+        </p>
+
+        <p className="guide-credit">
+          Naventra is designed and built by <a href="https://rianfernando.com" target="_blank" rel="noopener">Rian Fernando</a> —
+          see more projects at <a href="https://rianfernando.com" target="_blank" rel="noopener">rianfernando.com</a>.
         </p>
       </div>
     </div>

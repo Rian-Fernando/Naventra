@@ -1,0 +1,27 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="tileBg" cx="30%" cy="25%" r="80%">
+      <stop offset="0%" stop-color="#1C2230"></stop>
+      <stop offset="70%" stop-color="#111114"></stop>
+    </radialGradient>
+    <filter id="blurSoft2" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="4"></feGaussianBlur>
+    </filter>
+    <filter id="blurTight2" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="1.5"></feGaussianBlur>
+    </filter>
+  </defs>
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="url(#tileBg)"></rect>
+  <g transform="translate(4,4)">
+    <circle cx="28" cy="28" r="27" fill="none" stroke="#FFFFFF" stroke-opacity="0.08"></circle>
+    <circle cx="28" cy="28" r="19" fill="none" stroke="#FFFFFF" stroke-opacity="0.08"></circle>
+    <circle cx="28" cy="28" r="19" fill="#46D9E6" opacity="0.35" filter="url(#blurSoft2)"></circle>
+    <path d="M28,28 L45.22,19.97 A19,19 0 0,1 40.21,42.56 Z" fill="#46D9E6" opacity="0.55"></path>
+    <polygon points="24.8,27 31.2,27 36,47 20,47" fill="#F5F6F8"></polygon>
+    <rect x="13" y="19" width="30" height="11" rx="5" fill="#F5F6F8"></rect>
+    <rect x="15" y="22.5" width="26" height="3" rx="1.5" fill="#0B0D12" opacity="0.5"></rect>
+    <rect x="27.5" y="9" width="1.5" height="11" fill="#F5F6F8" opacity="0.7"></rect>
+    <circle cx="28" cy="9" r="5" fill="#46D9E6" opacity="0.5" filter="url(#blurTight2)"></circle>
+    <circle cx="28" cy="9" r="2" fill="#9FF3FA"></circle>
+  </g>
+</svg>

@@ -16,3 +16,8 @@
   from = "/proxy/adsbfi/*"
   to = "https://opendata.adsb.fi/:splat"
   status = 200
+
+[[redirects]]
+  from = "/guide"
+  to = "/index.html"
+  status = 200
