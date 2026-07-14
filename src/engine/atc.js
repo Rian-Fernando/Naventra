@@ -237,6 +237,9 @@ export function detectConflicts(aircraft, airport) {
       if (tSec > LOOKAHEAD_S) continue;
 
       const nowSep = Math.hypot(pb.x - pa.x, pb.y - pa.y);
+      // Two returns at the same point and altitude are one aircraft broadcast
+      // twice (ICAO + TIS-B/MLAT duplicate), not a collision in progress.
+      if (nowSep < 0.15 && dAlt < 150) continue;
       if (a.phase === 'FINAL' && b.phase === 'FINAL') {
         // Parallel approaches are procedurally separated; same-runway in-trail
         // landing intervals are normal tower ops unless truly compressed.
