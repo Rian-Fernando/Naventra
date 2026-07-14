@@ -1,0 +1,18 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/proxy/wx/*"
+  to = "https://aviationweather.gov/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/proxy/adsblol/*"
+  to = "https://api.adsb.lol/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/proxy/adsbfi/*"
+  to = "https://opendata.adsb.fi/:splat"
+  status = 200

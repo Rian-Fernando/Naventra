@@ -1,0 +1,24 @@
+{
+  "name": "naventra",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "AI-native air traffic control console with live ADS-B traffic, real METAR weather, and an autonomous ATC decision engine",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fontsource/barlow-condensed": "^5.1.0",
+    "@fontsource/ibm-plex-mono": "^5.1.0",
+    "lucide-react": "^0.469.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.7"
+  }
+}
