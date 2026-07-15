@@ -11,6 +11,9 @@
 //
 // Everything is stored locally (localStorage) — no external model, no API.
 
+import { octantOf } from './octant.js';
+export { octantOf };
+
 const KEY = 'nv-learning-v1';
 let cache = null;
 
@@ -32,11 +35,6 @@ function apStats(icao) {
   const db = load();
   if (!db[icao]) db[icao] = { rwy: {}, eta: { ema: 0, n: 0 }, landings: 0 };
   return db[icao];
-}
-
-// Approach direction bucketed into 8 sectors (N, NE, E, …).
-export function octantOf(brgFromField) {
-  return Math.floor((((brgFromField % 360) + 360) % 360 + 22.5) / 45) % 8;
 }
 
 // Smoothed P(end | octant) in [0, 1]; 0 when nothing learned yet.

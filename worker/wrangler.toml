@@ -1,0 +1,16 @@
+name = "naventra-tracker"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# Runs the tracker every minute: poll live ADS-B for each hub, lock/grade
+# predictions, update the learned model, persist to D1.
+[triggers]
+crons = ["* * * * *"]
+
+# D1 database binding. The database_id is filled in after `wrangler d1 create`
+# (see worker/README.md). Local `wrangler dev` uses a local SQLite file and
+# ignores the id.
+[[d1_databases]]
+binding = "DB"
+database_name = "naventra"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"

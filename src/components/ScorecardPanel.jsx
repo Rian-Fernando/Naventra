@@ -1,17 +1,18 @@
 import { Target } from 'lucide-react';
 
 // AI vs reality: locked predictions graded against observed outcomes.
-export default function ScorecardPanel({ scorecard, mode }) {
+export default function ScorecardPanel({ scorecard, mode, scope = 'session' }) {
   const sc = scorecard;
   const all = sc?.allTime;
+  const global = scope === 'global';
 
   return (
     <div className="panel score-panel">
       <div className="panel-head">
         <Target size={14} color="var(--green)" />
         <span className="panel-title">AI Scorecard</span>
-        <span className={`badge ${mode === 'LIVE' ? 'green' : 'amber'}`}>
-          {mode === 'LIVE' ? 'LIVE-VERIFIED' : 'SIM · NOT BANKED'}
+        <span className={`badge ${global ? 'cyan' : mode === 'LIVE' ? 'green' : 'amber'}`}>
+          {global ? '● GLOBAL · 24/7' : mode === 'LIVE' ? 'LIVE-VERIFIED' : 'SIM · NOT BANKED'}
         </span>
       </div>
 
@@ -21,7 +22,7 @@ export default function ScorecardPanel({ scorecard, mode }) {
         </div>
         <div className="score-sub">
           {all?.n ? (
-            <>of <b>{all.n}</b> predictions correct<br />all-time · live data only</>
+            <>of <b>{all.n}</b> predictions correct<br />{global ? 'always-on tracker · all visitors' : 'all-time · live data only'}</>
           ) : (
             <>no landings graded yet —<br />predictions lock as flights join approach</>
           )}

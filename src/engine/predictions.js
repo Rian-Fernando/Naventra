@@ -9,19 +9,11 @@
 // score; simulated traffic is graded for display but never banked (the AI
 // steering its own simulation would inflate the number).
 
-import { toLocalNm, angleDiff } from '../lib/geo.js';
-import { stripOffsets } from './atc.js';
 import { octantOf, recordLanding, recordEtaError, etaBiasSec, learnedLandings } from './learning.js';
+import { CATEGORIES, classifyLandingRunway, gradeItems } from './grading.js';
 
+export { CATEGORIES };
 const STORE_KEY = 'nv-scorecard-v1';
-export const CATEGORIES = [
-  ['runway', 'Runway end'],
-  ['config', 'Active config'],
-  ['eta', 'Touchdown ETA'],
-  ['sequence', 'Landing order'],
-];
-
-const ETA_TOLERANCE_MS = 150 * 1000; // ±2.5 min counts as a hit
 
 function emptyStats() {
   const s = { n: 0, correct: 0, byCat: {} };
@@ -39,35 +31,6 @@ function loadStore() {
 
 function saveStore(store) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch { /* full/denied */ }
-}
-
-// Which runway end did the aircraft actually line up with? Judged from its last
-// airborne sample: track alignment + cross-track distance to each end's
-// centerline. Returns null when nothing matches convincingly (kept ungraded —
-// an honest scorecard doesn't guess its own ground truth).
-function classifyLandingRunway(sample, airport) {
-  const p = toLocalNm(airport.lat, airport.lon, sample.lat, sample.lon);
-  const offsets = stripOffsets(airport);
-  let best = null;
-  let bestScore = Infinity;
-  for (const rwy of airport.runways) {
-    const off = offsets.get(rwy.id) || { offX: 0, offY: 0 };
-    const px = p.x - off.offX;
-    const py = p.y - off.offY;
-    for (let e = 0; e < 2; e++) {
-      const hdg = (rwy.trueHdg + e * 180) % 360;
-      const align = angleDiff(sample.track, hdg);
-      if (align > 38) continue;
-      const dirX = Math.sin(hdg * Math.PI / 180);
-      const dirY = Math.cos(hdg * Math.PI / 180);
-      const cross = Math.abs(px * dirY - py * dirX);
-      const along = px * dirX + py * dirY; // >0 means already past the field
-      if (cross > 1.1 || along > 0.8) continue;
-      const score = align * 0.05 + cross;
-      if (score < bestScore) { bestScore = score; best = rwy.ends[e]; }
-    }
-  }
-  return best;
 }
 
 export class PredictionTracker {
@@ -153,8 +116,6 @@ export class PredictionTracker {
     if (!o || !o.sample) return;
 
     const actualRunway = classifyLandingRunway(o.sample, this.airport);
-    const etaErrMs = landedTs - o.predEtaTs;
-    const items = [];
 
     // Feed the outcome back into the predictor — live landings only, so the
     // model learns the real facility, not our own simulation.
@@ -163,21 +124,10 @@ export class PredictionTracker {
       recordEtaError(this.airport.icao, (landedTs - o.rawEtaTs) / 1000);
     }
 
-    if (actualRunway) {
-      items.push({ cat: 'runway', predicted: o.predRunway, actual: actualRunway, ok: actualRunway === o.predRunway });
-      if (arrEndsNow) {
-        items.push({ cat: 'config', predicted: 'in ARR set', actual: actualRunway, ok: arrEndsNow.includes(actualRunway) });
-      }
-    }
-    items.push({
-      cat: 'eta',
-      predicted: new Date(o.predEtaTs).toISOString().slice(11, 16) + 'Z',
-      actual: `${etaErrMs >= 0 ? '+' : '−'}${Math.round(Math.abs(etaErrMs) / 1000)}s`,
-      ok: Math.abs(etaErrMs) <= ETA_TOLERANCE_MS,
-    });
-    if (o.sample.seq != null) {
-      items.push({ cat: 'sequence', predicted: '#1 on runway', actual: `was #${o.sample.seq}`, ok: o.sample.seq === 1 });
-    }
+    const items = gradeItems(
+      { predRunway: o.predRunway, predEtaTs: o.predEtaTs, sampleSeq: o.sample.seq },
+      actualRunway, landedTs, arrEndsNow
+    );
 
     const entry = { ts: landedTs, callsign: o.callsign, airport: this.airport.iata, live: o.live, items };
 

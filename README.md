@@ -33,6 +33,15 @@ on screen but never persisted, since the AI steers its own sim); go-arounds void
 predictions; unclassifiable landings are discarded rather than guessed; conflict advisories
 are not graded (a real controller resolving a predicted conflict is not a miss).
 
+### Always-on learning (optional backend)
+
+A companion Cloudflare Worker (`worker/`) runs the same engine **24/7 on a 1-minute cron**,
+with no browser open, against JFK / LAX / LHR — grading real landings and banking the learned
+model into a free **D1** database. The frontend reads the global scorecard from it, so every
+visitor sees one continuously-improving number (badge: **GLOBAL · 24/7**). Set
+`VITE_TRACKER_URL` to enable it; unset, the app runs fully client-side with per-browser
+learning. See [`worker/README.md`](worker/README.md) for the (free) deploy steps.
+
 ## The AI — a self-improving expert system
 
 The decision core is a deterministic, auditable rule engine (no external model, no API, no

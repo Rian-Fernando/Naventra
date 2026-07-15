@@ -73,6 +73,13 @@ export default function Guide() {
           moving-average that corrects future locks). The longer Naventra watches an airport, the sharper
           its predictions get — and the scorecard proves it either way.
         </p>
+        <p>
+          A companion <b>always-on tracker</b> (a Cloudflare Worker on a 1-minute cron) runs this same
+          engine 24/7 against <b>JFK, LAX and London Heathrow</b> with no browser open, banking every graded
+          landing and the learned model into a shared database. When you're viewing one of those hubs the
+          scorecard shows the <em>global</em> figure — the model that has been continuously learning across
+          all visitors — marked <b>GLOBAL · 24/7</b>. Other airports show your live session's own tally.
+        </p>
 
         <h2>Screen map</h2>
         <div className="guide-map">

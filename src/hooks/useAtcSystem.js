@@ -5,6 +5,8 @@ import { fetchMetar } from '../lib/weather.js';
 import { SimEngine } from '../lib/sim.js';
 import { allocateRunways, annotateAircraft, detectConflicts, generateEvents, computeKpis } from '../engine/atc.js';
 import { PredictionTracker } from '../engine/predictions.js';
+import { runwayPrior } from '../engine/learning.js';
+import { trackerConfigured, TRACKED_HUBS, fetchGlobalScorecard, fetchGlobalModels, priorFnFromModels } from '../lib/globalModel.js';
 
 const RADIUS_NM = 50;
 const LIVE_POLL_MS = 6000;
@@ -26,6 +28,7 @@ export function useAtcSystem() {
   const [comms, setComms] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [scorecard, setScorecard] = useState(null);
+  const [globalScorecard, setGlobalScorecard] = useState(null);
 
   const airport = AIRPORTS[icao];
 
@@ -40,6 +43,7 @@ export function useAtcSystem() {
     runways: [],
     rwySignature: '',
     generation: 0,
+    globalPrior: null,
   });
 
   const pushEvents = useCallback((evDecisions, evComms) => {
@@ -54,7 +58,8 @@ export function useAtcSystem() {
   const runEngine = useCallback((tracks, ap, isLive) => {
     const r = ref.current;
     const rwys = r.runways.length ? r.runways : allocateRunways(ap, r.weather);
-    const annotated = annotateAircraft(tracks, ap, rwys, r.gateMap);
+    // Prefer the 24/7 tracker's learned priors when available, else local.
+    const annotated = annotateAircraft(tracks, ap, rwys, r.gateMap, r.globalPrior || runwayPrior);
     const confl = detectConflicts(annotated, ap);
     const { decisions: evD, comms: evC } = generateEvents(
       r.prevAnnotated, annotated, ap, rwys, confl, r.prevConflictIds, r.weather
@@ -104,6 +109,32 @@ export function useAtcSystem() {
     setSelectedId(null);
     setMode('CONNECTING');
     setSource(null);
+    setGlobalScorecard(null);
+  }, [icao]);
+
+  // Always-on tracker bridge: pull the global 24/7 scorecard for tracked hubs
+  // and the fleet-wide learned priors. Silently no-ops if the tracker isn't
+  // configured or is unreachable — local learning stays the fallback.
+  useEffect(() => {
+    if (!trackerConfigured) return undefined;
+    const r = ref.current;
+    let stop = false;
+    const tracked = TRACKED_HUBS.includes(icao);
+
+    async function pollScore() {
+      if (!tracked) return;
+      const sc = await fetchGlobalScorecard(icao);
+      if (!stop && sc) setGlobalScorecard(sc);
+    }
+    async function pollModels() {
+      const payload = await fetchGlobalModels();
+      if (!stop && payload) r.globalPrior = priorFnFromModels(payload);
+    }
+    pollScore();
+    pollModels();
+    const t1 = setInterval(pollScore, 30000);
+    const t2 = setInterval(pollModels, 5 * 60 * 1000);
+    return () => { stop = true; clearInterval(t1); clearInterval(t2); };
   }, [icao]);
 
   // Weather loop → drives runway allocation.
@@ -195,10 +226,17 @@ export function useAtcSystem() {
   const kpis = useMemo(() => computeKpis(aircraft, conflicts), [aircraft, conflicts]);
   const selected = useMemo(() => aircraft.find((a) => a.id === selectedId) || null, [aircraft, selectedId]);
 
+  // Show the global 24/7 scorecard for tracked hubs; fall back to the local
+  // per-session one otherwise (or if the tracker is unreachable).
+  const useGlobal = trackerConfigured && TRACKED_HUBS.includes(icao) && !!globalScorecard;
+  const shownScorecard = useGlobal ? globalScorecard : scorecard;
+  const scoreScope = useGlobal ? 'global' : 'session';
+
   return {
     airport, icao, setIcao,
     mode, source, forceSim, setForceSim,
-    weather, aircraft, runways, conflicts, decisions, comms, kpis, scorecard,
+    weather, aircraft, runways, conflicts, decisions, comms, kpis,
+    scorecard: shownScorecard, scoreScope,
     selected, selectedId, setSelectedId,
   };
 }

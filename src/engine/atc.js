@@ -5,7 +5,7 @@
 
 import { distNm, bearingDeg, velocityNmS, toLocalNm, cpa, angleDiff, windComponents, fmtAlt } from '../lib/geo.js';
 import { airlineName } from '../data/airports.js';
-import { runwayPrior, octantOf } from './learning.js';
+import { octantOf } from './octant.js';
 
 export const PHASES = ['GROUND', 'DEPARTURE', 'ENROUTE', 'ARRIVAL', 'APPROACH', 'FINAL'];
 
@@ -97,7 +97,10 @@ export function allocateRunways(airport, wx) {
 
 // ------------------------------------------------------------ annotation ---
 
-export function annotateAircraft(aircraft, airport, runways, gateMap) {
+// `priorFn(icao, octant, runwayEnd) -> [0,1]` injects learned runway habits.
+// The browser passes a localStorage-backed fn; the tracker passes a D1-backed
+// one; default is a no-op so the engine stays pure and portable.
+export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = () => 0) {
   const arrRwys = runways.filter((r) => r.role.includes('ARR'));
   const fieldElev = airport.elevFt;
 
@@ -149,7 +152,7 @@ export function annotateAircraft(aircraft, airport, runways, gateMap) {
     const dirX = Math.sin(r.activeHdg * Math.PI / 180);
     const dirY = Math.cos(r.activeHdg * Math.PI / 180);
     const cross = Math.abs(px * dirY - py * dirX);
-    const prior = runwayPrior(airport.icao, octantOf(a.brgFromField), r.activeEnd);
+    const prior = priorFn(airport.icao, octantOf(a.brgFromField), r.activeEnd);
     return angleDiff(a.track, r.activeHdg) * 0.05 + cross - prior * 1.2;
   };
 

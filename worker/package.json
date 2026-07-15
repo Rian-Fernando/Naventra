@@ -1,0 +1,16 @@
+{
+  "name": "naventra-tracker",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Always-on Cloudflare Worker that tracks live ADS-B, grades Naventra's predictions against real landings, and maintains the shared self-learning model in D1.",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "db:init:local": "wrangler d1 execute naventra --local --file=./schema.sql",
+    "db:init:remote": "wrangler d1 execute naventra --remote --file=./schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}
