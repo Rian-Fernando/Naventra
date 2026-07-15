@@ -49,8 +49,12 @@ body {
 
 .shell {
   display: grid;
+  /* Cap the single column at the viewport so a wide header can't stretch the
+     whole grid past screen edge (which clipped the right column). */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 54px 1fr 168px;
   height: 100vh;
+  width: 100%;
   gap: 8px;
   padding: 8px;
 }
@@ -60,6 +64,7 @@ body {
   grid-template-columns: 302px minmax(0, 1fr) 344px;
   gap: 8px;
   min-height: 0;
+  min-width: 0;
 }
 
 .col {
@@ -67,7 +72,23 @@ body {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
+  min-width: 0;
 }
+
+/* Side columns scroll as a whole when their panels can't all fit the viewport
+   height (short laptops), so no panel gets starved to zero. The middle radar
+   column always fills its cell and never scrolls. */
+.main > .col:first-child,
+.main > .col:last-child {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* The AI Decision Feed is the flexible filler in the right column — keep it
+   usable rather than letting richer neighbours crush it. (.panel.x beats the
+   later `.panel { min-height: 0 }` on specificity.) */
+.panel.feed-panel { min-height: 150px; }
+.panel.score-panel, .panel.wx-panel, .panel.conflict-panel { flex-shrink: 0; }
 
 .panel {
   background: linear-gradient(180deg, var(--panel) 0%, var(--bg-raised) 100%);
@@ -128,12 +149,15 @@ body {
   background: linear-gradient(180deg, var(--panel-2) 0%, var(--panel) 100%);
   border: 1px solid var(--line);
   border-radius: 6px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .brand-logo {
@@ -170,6 +194,8 @@ body {
   background: var(--bg);
   border: 1px solid var(--line-bright);
   border-radius: 5px;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .facility select {
@@ -180,14 +206,17 @@ body {
   font-size: 12px;
   cursor: pointer;
   outline: none;
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
 }
 
 .facility select option { background: var(--panel); }
 
-.kpis { display: flex; gap: 8px; margin-left: auto; }
+.kpis { display: flex; gap: 8px; margin-left: auto; flex-shrink: 0; }
 
 .kpi {
-  min-width: 74px;
+  min-width: 68px;
   padding: 4px 10px;
   background: var(--bg);
   border: 1px solid var(--line);
@@ -835,7 +864,74 @@ body {
 
 .mono-sm { font-size: 10px; color: var(--muted); }
 
-@media (max-width: 1180px) {
-  .main { grid-template-columns: 260px minmax(0, 1fr) 300px; }
-  .kpi { min-width: 60px; }
+/* ------------------------------------------------------ responsive ------ */
+
+/* Large laptops: tighten side columns + header so nothing clips. */
+@media (max-width: 1460px) {
+  .main { grid-template-columns: 280px minmax(0, 1fr) 320px; }
+  .header { gap: 10px; }
+  .kpi { min-width: 62px; padding: 4px 8px; }
+  .kpi b { font-size: 16px; }
+  .nav-portfolio .nav-label { display: none; } /* icon-only backlink */
+}
+
+/* Standard 1280–1366 laptops: the size the user saw break. Drop the two
+   lowest-priority KPIs (Departures, Ground — still on strip tabs) and the
+   brand subtitle; keep Tracked / Arrivals / Conflicts / AI Score. */
+@media (max-width: 1320px) {
+  .main { grid-template-columns: 258px minmax(0, 1fr) 300px; }
+  .brand-sub { display: none; }
+  .kpi.kpi-lo { display: none; }
+  .clockbox .lbl { display: none; }
+  .facility select { max-width: 168px; }
+}
+
+@media (max-width: 1120px) {
+  .main { grid-template-columns: 236px minmax(0, 1fr) 280px; }
+  .livebtn .livebtn-src { display: none; }
+  .facility select { max-width: 96px; }
+  .kpi.kpi-mid { display: none; } /* keep Tracked + Conflicts + AI Score */
+}
+
+/* Tablet / phone: abandon the fixed console grid for a scrollable stack. */
+@media (max-width: 960px) {
+  body { overflow-y: auto; overflow-x: hidden; }
+  .shell {
+    height: auto;
+    min-height: 100vh;
+    grid-template-rows: auto auto auto;
+  }
+  .header {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 10px 12px;
+    row-gap: 8px;
+  }
+  .facility { flex: 1 1 160px; }
+  .facility select { max-width: 100%; }
+  .kpis { width: 100%; margin-left: 0; justify-content: space-between; }
+  .kpi { flex: 1; min-width: 0; }
+  .clockbox { margin-left: auto; }
+  .main {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .main .col { min-height: 0; }
+  /* Give the radar a real height when it can't fill a grid cell. */
+  .radar-panel { height: 74vh; min-height: 460px; }
+  .score-panel { max-height: none; }
+  /* Comms log becomes a normal stacked panel instead of a fixed footer. */
+  .shell > .panel:last-child { height: 320px; }
+}
+
+@media (max-width: 560px) {
+  .shell { padding: 6px; gap: 6px; }
+  .header { gap: 8px; }
+  .nav-link { padding: 6px 8px; }
+  .kpi b { font-size: 15px; }
+  .radar-panel { height: 66vh; min-height: 380px; }
+  .guide { padding: 20px 16px 60px; }
+  .guide h1 { font-size: 26px; }
+  .guide-map { grid-template-columns: 1fr; grid-template-rows: repeat(5, auto); }
 }

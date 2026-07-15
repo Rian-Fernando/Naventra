@@ -6,7 +6,7 @@ function timeStr(ts) {
 
 export default function AIDecisionFeed({ decisions }) {
   return (
-    <div className="panel" style={{ flex: 1.4 }}>
+    <div className="panel feed-panel" style={{ flex: '1.4 1 0' }}>
       <div className="panel-head">
         <Cpu size={14} color="var(--green)" />
         <span className="panel-title">AI Decision Feed</span>

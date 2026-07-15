@@ -2,7 +2,7 @@ import { AlertTriangle, ShieldCheck } from 'lucide-react';
 
 export default function ConflictPanel({ conflicts, onSelect }) {
   return (
-    <div className="panel" style={{ maxHeight: conflicts.length ? 220 : 92, transition: 'max-height 0.3s' }}>
+    <div className="panel conflict-panel" style={{ maxHeight: conflicts.length ? 220 : 92, transition: 'max-height 0.3s' }}>
       <div className="panel-head">
         <AlertTriangle size={14} color={conflicts.length ? 'var(--red)' : 'var(--green)'} />
         <span className="panel-title">Separation Monitor</span>

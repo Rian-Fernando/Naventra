@@ -43,21 +43,21 @@ export default function Header({ airport, icao, setIcao, mode, source, forceSim,
       >
         <span className="dot" />
         {mode === 'LIVE' ? 'LIVE OPS' : mode === 'SIM' ? 'SIM OPS' : 'ACQUIRING'}
-        <span className="mono-sm" style={{ letterSpacing: 0 }}>{source ? `· ${source}` : ''}</span>
+        <span className="mono-sm livebtn-src" style={{ letterSpacing: 0 }}>{source ? `· ${source}` : ''}</span>
       </button>
 
       <a className={`nav-link ${onGuide ? 'on' : ''}`} href={onGuide ? '/' : '/guide'}>
         <BookOpen size={12} /> {onGuide ? 'CONSOLE' : 'GUIDE'}
       </a>
-      <a className="nav-link" href="https://rianfernando.com" target="_blank" rel="noopener" title="Built by Rian Fernando">
-        <ExternalLink size={12} /> RIANFERNANDO.COM
+      <a className="nav-link nav-portfolio" href="https://rianfernando.com" target="_blank" rel="noopener" title="Built by Rian Fernando · rianfernando.com">
+        <ExternalLink size={12} /> <span className="nav-label">RIANFERNANDO.COM</span>
       </a>
 
       <div className="kpis">
         <div className="kpi"><b>{kpis.tracked}</b><span>Tracked</span></div>
-        <div className="kpi ok"><b>{kpis.arrivals}</b><span>Arrivals</span></div>
-        <div className="kpi cyan"><b>{kpis.departures}</b><span>Departures</span></div>
-        <div className="kpi"><b>{kpis.ground}</b><span>Ground</span></div>
+        <div className="kpi ok kpi-mid"><b>{kpis.arrivals}</b><span>Arrivals</span></div>
+        <div className="kpi cyan kpi-lo"><b>{kpis.departures}</b><span>Departures</span></div>
+        <div className="kpi kpi-lo"><b>{kpis.ground}</b><span>Ground</span></div>
         <div className={`kpi ${kpis.conflicts ? 'alert' : 'ok'}`}><b>{kpis.conflicts}</b><span>Conflicts</span></div>
         <div className="kpi ok" title="All-time AI prediction accuracy on live traffic">
           <b>{scorecard?.allTime?.pct != null ? `${scorecard.allTime.pct}%` : '—'}</b><span>AI Score</span>

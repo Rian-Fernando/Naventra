@@ -4,7 +4,7 @@ import { atisLetter } from '../lib/weather.js';
 export default function WeatherPanel({ weather, airport }) {
   if (!weather) {
     return (
-      <div className="panel">
+      <div className="panel wx-panel">
         <div className="panel-head">
           <CloudSun size={14} color="var(--green)" />
           <span className="panel-title">METAR / ATIS</span>
@@ -17,7 +17,7 @@ export default function WeatherPanel({ weather, airport }) {
   const catColor = { VFR: 'green', MVFR: 'cyan', IFR: 'amber', LIFR: 'red' }[weather.fltCat] || 'green';
 
   return (
-    <div className="panel">
+    <div className="panel wx-panel">
       <div className="panel-head">
         <CloudSun size={14} color="var(--green)" />
         <span className="panel-title">METAR / ATIS</span>
