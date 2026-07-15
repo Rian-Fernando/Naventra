@@ -1,6 +1,12 @@
 {
   "redirects": [
     {
+      "source": "/",
+      "has": [{ "type": "host", "value": "naventra-lake\\.vercel\\.app" }],
+      "destination": "https://naventra.rianfernando.com/",
+      "permanent": true
+    },
+    {
       "source": "/:path*",
       "has": [{ "type": "host", "value": "naventra-lake\\.vercel\\.app" }],
       "destination": "https://naventra.rianfernando.com/:path*",
