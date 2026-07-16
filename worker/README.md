@@ -9,11 +9,44 @@ reads the global scorecard from this worker, so every visitor sees the same
 continuously-improving numbers.
 
 ```
-scheduled()  every minute → tick each hub → lock / grade / learn → D1
+scheduled()  every minute → tick each hub → lock / grade / learn / log → D1
 fetch()      GET /api/scorecard?icao=KJFK   global accuracy + recent landings
              GET /api/model                  learned priors (all hubs)
-             GET /api/health                  liveness
+             GET /api/health                  liveness + dataset size
+             GET /api/dataset.jsonl[?icao=]   the training dataset (JSONL)
 ```
+
+## The training dataset
+
+Every graded landing is logged to the `samples` table as one **labeled row**: the
+full lock-time feature vector (≈25 factors — approach octant/bearing, distance,
+altitude, speed, aircraft type + wake category, airline, wind dir/speed/gust and
+head/crosswind to the predicted runway, visibility, ceiling, flight category,
+temperature, QNH, UTC + local hour, day-of-week, active runway config, inbound
+count, sector traffic, arrival rate, runway sequence) **plus the observed
+outcome** (actual runway, runway/config/ETA/sequence correctness, ETA error).
+
+Pull it as JSONL for offline model training:
+
+```bash
+curl https://naventra-tracker.<subdomain>.workers.dev/api/dataset.jsonl > naventra.jsonl
+```
+
+A minimal training recipe (free, offline — no keys, no API):
+
+```python
+import pandas as pd
+df = pd.read_json("naventra.jsonl", lines=True)
+# Runway classifier: which end did it actually land on?
+X = pd.get_dummies(df[["octant","wake","head_kt","cross_kt","wind_dir","hour_local",
+                       "dow","n_arr_rwy","inbound_count","seq_rwy","flt_cat","airline"]])
+y = df["actual_runway"]
+from sklearn.ensemble import GradientBoostingClassifier
+# ... train/test split, fit, then export small weights to serve in the Worker
+```
+
+The model that comes out is served the same way the learned priors are —
+pure-JS inference in the Worker and browser, still $0 and keyless.
 
 ## Local development (no Cloudflare account needed)
 
@@ -39,6 +72,11 @@ Point the frontend at it: `VITE_TRACKER_URL=http://localhost:8787 npm run dev`
    Copy the printed `database_id` into `wrangler.toml` (replace
    `REPLACE_WITH_D1_DATABASE_ID`).
 3. **Create the tables:** `npm run db:init:remote`
+   - **Already deployed an earlier version?** Instead run the migration once to add
+     the feature columns + dataset table to your existing database:
+     ```bash
+     npx wrangler d1 execute naventra --remote --file=./migrations/002_features.sql
+     ```
 4. **Deploy:** `npm run deploy`
    Wrangler prints the worker URL, e.g.
    `https://naventra-tracker.<your-subdomain>.workers.dev`. The 1-minute cron

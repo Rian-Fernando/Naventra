@@ -63,6 +63,7 @@ export async function loadOpen(db, icao) {
       id: r.id, callsign: r.callsign, lockTs: r.lock_ts, lockOct: r.lock_oct,
       predRunway: r.pred_runway, rawEtaTs: r.raw_eta_ts, predEtaTs: r.pred_eta_ts,
       lastSeen: r.last_seen, sample: r.sample_json ? JSON.parse(r.sample_json) : null,
+      features: r.features_json ? JSON.parse(r.features_json) : null,
     });
   }
   return map;
@@ -70,10 +71,45 @@ export async function loadOpen(db, icao) {
 
 export function upsertOpenStmt(db, icao, o) {
   return db.prepare(
-    `INSERT INTO predictions (id, icao, callsign, lock_ts, lock_oct, pred_runway, raw_eta_ts, pred_eta_ts, last_seen, sample_json)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+    `INSERT INTO predictions (id, icao, callsign, lock_ts, lock_oct, pred_runway, raw_eta_ts, pred_eta_ts, last_seen, sample_json, features_json)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
      ON CONFLICT(id) DO UPDATE SET last_seen=?9, sample_json=?10`
-  ).bind(o.id, icao, o.callsign, o.lockTs, o.lockOct, o.predRunway, o.rawEtaTs, o.predEtaTs, o.lastSeen, o.sample ? JSON.stringify(o.sample) : null);
+  ).bind(o.id, icao, o.callsign, o.lockTs, o.lockOct, o.predRunway, o.rawEtaTs, o.predEtaTs, o.lastSeen,
+    o.sample ? JSON.stringify(o.sample) : null, o.features ? JSON.stringify(o.features) : null);
+}
+
+// Append one labeled training row.
+export function recordSampleStmt(db, s) {
+  return db.prepare(
+    `INSERT INTO samples (icao, iata, ts, callsign, actual_runway, runway_ok, eta_err_sec, features_json, outcome_json)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)`
+  ).bind(s.icao, s.iata, s.ts, s.callsign, s.actualRunway, s.runwayOk ? 1 : 0, s.etaErrSec,
+    JSON.stringify(s.features || {}), JSON.stringify(s.outcome || {}));
+}
+
+export async function datasetCount(db) {
+  const row = await db.prepare('SELECT COUNT(*) k FROM samples').first();
+  return row?.k || 0;
+}
+
+// Landings graded in the last hour at this airport (a live arrival-rate feature).
+export async function arrRate1h(db, icao, now) {
+  const row = await db.prepare('SELECT COUNT(*) k FROM samples WHERE icao=? AND ts > ?')
+    .bind(icao, now - 3600000).first();
+  return row?.k || 0;
+}
+
+// Stream the training set as JSONL: one flat object per graded landing.
+export async function datasetRows(db, icao, limit) {
+  const q = icao
+    ? db.prepare('SELECT * FROM samples WHERE icao=? ORDER BY ts DESC LIMIT ?').bind(icao, limit)
+    : db.prepare('SELECT * FROM samples ORDER BY ts DESC LIMIT ?').bind(limit);
+  const { results } = await q.all();
+  return results.map((r) => JSON.stringify({
+    icao: r.icao, iata: r.iata, ts: r.ts, callsign: r.callsign,
+    ...JSON.parse(r.features_json),
+    ...JSON.parse(r.outcome_json),
+  }));
 }
 
 export function deleteOpenStmt(db, id) {
@@ -123,10 +159,15 @@ export async function getScorecard(db, icao) {
     ? (await db.prepare('SELECT * FROM landings WHERE icao=? ORDER BY ts DESC LIMIT 20').bind(icao).all()).results
     : (await db.prepare('SELECT * FROM landings ORDER BY ts DESC LIMIT 20').all()).results;
 
+  const sampleRow = icao
+    ? await db.prepare('SELECT COUNT(*) k FROM samples WHERE icao=?').bind(icao).first()
+    : await db.prepare('SELECT COUNT(*) k FROM samples').first();
+
   return {
     allTime: { n: totalN, pct: totalN ? Math.round((totalC / totalN) * 100) : null, byCat },
     openCount: openRow?.k || 0,
     learned: modelRow?.l || 0,
+    samples: sampleRow?.k || 0,
     recent: recentRows.map((r) => ({
       ts: r.ts, callsign: r.callsign, airport: r.iata, live: true, items: JSON.parse(r.items_json),
     })),

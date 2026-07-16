@@ -128,7 +128,7 @@ export function useAtcSystem() {
         if (!stop && sc) setGlobalScorecard(sc);
       }
       const agg = await fetchGlobalScorecard(null); // fleet-wide totals
-      if (!stop && agg) setGlobalTotals({ learned: agg.learned, n: agg.allTime.n, pct: agg.allTime.pct });
+      if (!stop && agg) setGlobalTotals({ learned: agg.learned, n: agg.allTime.n, pct: agg.allTime.pct, samples: agg.samples });
     }
     async function pollModels() {
       const payload = await fetchGlobalModels();

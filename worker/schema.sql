@@ -11,9 +11,28 @@ CREATE TABLE IF NOT EXISTS predictions (
   raw_eta_ts    INTEGER NOT NULL,
   pred_eta_ts   INTEGER NOT NULL,
   last_seen     INTEGER NOT NULL,
-  sample_json   TEXT                -- last airborne sample {lat,lon,track,agl,distNm,seq}
+  sample_json   TEXT,               -- last airborne sample {lat,lon,track,agl,distNm,seq}
+  features_json TEXT                -- lock-time feature vector (see features.js)
 );
 CREATE INDEX IF NOT EXISTS idx_pred_icao ON predictions(icao);
+
+-- Training dataset: one labeled row per graded landing. features_json holds all
+-- inputs at lock time; outcome_json holds the observed labels. Grows 24/7 and
+-- is exported as JSONL for offline model training.
+CREATE TABLE IF NOT EXISTS samples (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  icao          TEXT NOT NULL,
+  iata          TEXT NOT NULL,
+  ts            INTEGER NOT NULL,   -- touchdown time
+  callsign      TEXT NOT NULL,
+  actual_runway TEXT,
+  runway_ok     INTEGER,
+  eta_err_sec   INTEGER,
+  features_json TEXT NOT NULL,
+  outcome_json  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_samples_ts ON samples(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_samples_icao ON samples(icao);
 
 -- Graded landings (rolling history for display).
 CREATE TABLE IF NOT EXISTS landings (

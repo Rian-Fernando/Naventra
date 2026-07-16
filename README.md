@@ -42,6 +42,14 @@ visitor sees one continuously-improving number (badge: **GLOBAL · 24/7**). Set
 `VITE_TRACKER_URL` to enable it; unset, the app runs fully client-side with per-browser
 learning. See [`worker/README.md`](worker/README.md) for the (free) deploy steps.
 
+Every graded landing is also logged as a **labeled training row** — ~25 factors captured at
+lock time (approach geometry, aircraft type + wake category, live wind components, ceiling,
+flight category, time-of-day, runway config, traffic density, sequence) plus the observed
+outcome — and exported as JSONL from `/api/dataset.jsonl`. That turns the always-on tracker
+into a growing dataset you can train a full ML model on offline (free, keyless) and serve back
+as pure-JS inference. See [`worker/README.md`](worker/README.md) for the schema and a training
+recipe.
+
 ## The AI — a self-improving expert system
 
 The decision core is a deterministic, auditable rule engine (no external model, no API, no

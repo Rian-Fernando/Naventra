@@ -18,9 +18,12 @@ export default function ScorecardPanel({ scorecard, mode, scope = 'session', glo
       </div>
 
       {globalTotals && (
-        <div className="learn-strip" title="The always-on tracker runs 24/7 and learns from every real landing it grades across JFK, LAX and LHR">
+        <div className="learn-strip" title="The always-on tracker runs 24/7, learning from every real landing it grades across JFK, LAX and LHR — and logging each as a labeled training row.">
           <span className="ls-dot" />
-          <b>{processed.toLocaleString()}</b> real landing{processed === 1 ? '' : 's'} processed
+          <span>
+            <b>{processed.toLocaleString()}</b> real landing{processed === 1 ? '' : 's'} processed
+            {globalTotals.samples > 0 && <> · <b>{globalTotals.samples.toLocaleString()}</b> training rows</>}
+          </span>
           <span className="ls-tag">SELF-LEARNING · 24/7</span>
         </div>
       )}

@@ -9,7 +9,9 @@ import { classifyLandingRunway, gradeItems } from '../../src/engine/grading.js';
 import {
   loadModel, priorFromModel, recordLandingIntoModel, etaBiasSec,
   loadOpen, upsertOpenStmt, deleteOpenStmt, recordLandingStmt, bumpStatsStmt, saveModelStmt,
+  recordSampleStmt, arrRate1h,
 } from './store.js';
+import { lockFeatures, decodeWx } from './features.js';
 
 export const TRACKED = ['KJFK', 'KLAX', 'EGLL'];
 const RADIUS_NM = 60;
@@ -46,8 +48,7 @@ async function fetchWx(icao) {
     if (!res.ok) return null;
     const arr = await res.json();
     const m = Array.isArray(arr) ? arr[0] : null;
-    if (!m) return null;
-    return { windDir: typeof m.wdir === 'number' ? m.wdir : null, windKt: m.wspd ?? 0 };
+    return decodeWx(m); // full decoded weather (windDir/windKt + gust/vis/ceiling/cat/temp/qnh)
   } catch { return null; }
 }
 
@@ -56,20 +57,24 @@ export async function tickAirport(env, icao) {
   const airport = AIRPORTS[icao];
   const now = Date.now();
 
-  const [tracks, wx, model, open] = await Promise.all([
-    fetchTraffic(airport), fetchWx(icao), loadModel(env.DB, icao), loadOpen(env.DB, icao),
+  const [tracks, wx, model, open, arrRate] = await Promise.all([
+    fetchTraffic(airport), fetchWx(icao), loadModel(env.DB, icao), loadOpen(env.DB, icao), arrRate1h(env.DB, icao, now),
   ]);
 
   const rwys = allocateRunways(airport, wx || {});
   const arrEnds = rwys.filter((r) => r.role.includes('ARR')).map((r) => r.activeEnd);
+  const depEnds = rwys.filter((r) => r.role.includes('DEP')).map((r) => r.activeEnd);
   const annotated = annotateAircraft(
     tracks.filter((t) => t.altFt == null || t.altFt < 60000),
     airport, rwys, {}, priorFromModel(model)
   );
 
+  const inboundCount = annotated.filter((a) => a.phase === 'ARRIVAL' || a.phase === 'APPROACH' || a.phase === 'FINAL').length;
+  const sectorCount = annotated.length;
   const byId = new Map(annotated.map((a) => [a.id, a]));
   // Accumulate writes so the batch never contains duplicate primary keys:
   const landingEntries = [];             // one INSERT each
+  const samples = [];                    // labeled training rows
   const statDelta = new Map();           // cat -> { n, correct }  (one upsert each)
   const openUpserts = new Map();         // id -> record           (last write wins)
   const openDeletes = new Set();         // id
@@ -89,6 +94,26 @@ export async function tickAirport(env, icao) {
         d.n += 1; d.correct += it.ok ? 1 : 0;
         statDelta.set(it.cat, d);
       }
+      // Labeled training row: the lock-time features + the observed outcome.
+      if (o.features) {
+        const runwayOk = actualRunway ? actualRunway === o.predRunway : null;
+        const etaErrSec = Math.round((landedTs - o.rawEtaTs) / 1000);
+        samples.push({
+          icao, iata: airport.iata, ts: landedTs, callsign: o.callsign,
+          actualRunway, runwayOk, etaErrSec,
+          features: o.features,
+          outcome: {
+            actual_runway: actualRunway,
+            runway_ok: actualRunway ? (runwayOk ? 1 : 0) : null,
+            config_ok: actualRunway ? (arrEnds.includes(actualRunway) ? 1 : 0) : null,
+            eta_err_sec: etaErrSec,
+            eta_ok: Math.abs(landedTs - o.predEtaTs) <= 150000 ? 1 : 0,
+            seq_at_land: o.sample.seq ?? null,
+            seq_ok: o.sample.seq === 1 ? 1 : 0,
+            land_ts: landedTs,
+          },
+        });
+      }
       graded++;
     }
     openDeletes.add(o.id);
@@ -103,10 +128,15 @@ export async function tickAirport(env, icao) {
       if (wx && (ac.phase === 'APPROACH' || (ac.phase === 'FINAL' && ac.distNm > 4)) &&
           ac.runway && ac.etaMin != null && ac.distNm > 3.5 && ac.distNm < 26) {
         const rawEtaTs = now + ac.etaMin * 60000;
+        const predEtaTs = rawEtaTs + etaBiasSec(model) * 1000;
+        const features = lockFeatures(ac, airport, {
+          wx, rwys, arrEnds, depEnds, inbound: inboundCount, sector: sectorCount,
+          arrRate1h: arrRate, predRunway: ac.runway, predEtaTs,
+        });
         const rec = {
           id: ac.id, callsign: ac.callsign, lockTs: now, lockOct: octantOf(ac.brgFromField),
-          predRunway: ac.runway, rawEtaTs, predEtaTs: rawEtaTs + etaBiasSec(model) * 1000,
-          lastSeen: now, sample: null,
+          predRunway: ac.runway, rawEtaTs, predEtaTs,
+          lastSeen: now, sample: null, features,
         };
         open.set(ac.id, rec);
         openUpserts.set(ac.id, rec);
@@ -144,11 +174,12 @@ export async function tickAirport(env, icao) {
   // Build the batch with no duplicate primary keys.
   const stmts = [];
   for (const entry of landingEntries) stmts.push(recordLandingStmt(env.DB, entry));
+  for (const s of samples) stmts.push(recordSampleStmt(env.DB, s));
   for (const [cat, d] of statDelta) stmts.push(bumpStatsStmt(env.DB, icao, cat, d.n, d.correct));
   for (const id of openDeletes) { openUpserts.delete(id); stmts.push(deleteOpenStmt(env.DB, id)); }
   for (const rec of openUpserts.values()) stmts.push(upsertOpenStmt(env.DB, icao, rec));
   stmts.push(saveModelStmt(env.DB, model));
 
   if (stmts.length) await env.DB.batch(stmts);
-  return { icao, graded, locked, tracked: annotated.length };
+  return { icao, graded, locked, samples: samples.length, tracked: annotated.length };
 }
