@@ -204,6 +204,19 @@ export const AIRPORTS = {
     ],
     carriers: ['CPA', 'HDA', 'CRK', 'CES', 'CSN', 'CCA', 'SIA', 'ANA', 'KAL', 'UAE', 'QTR', 'BAW'],
   },
+  VCBI: {
+    icao: 'VCBI', tz: 'Asia/Colombo', iata: 'CMB', name: 'Bandaranaike Intl', city: 'Colombo, Sri Lanka',
+    lat: 7.1808, lon: 79.8841, elevFt: 30, decl: -2,
+    freqs: { tower: '118.700', ground: '121.900', approach: '132.400', atis: '127.100' },
+    runways: [
+      { id: '04/22', ends: ['04', '22'], trueHdg: 38, lenFt: 10991, ils: ['04', '22'] },
+    ],
+    terminals: [
+      { name: 'T1', gates: ['4', '5', '6', '7', '8', '9', '10', '11', '12'] },
+      { name: 'APR', gates: ['15', '16', '17', '18', '21', '22'] },
+    ],
+    carriers: ['ALK', 'UAE', 'QTR', 'SIA', 'AIC', 'IGO', 'THY', 'CPA', 'MAS', 'ETD'],
+  },
   OMDB: {
     icao: 'OMDB', tz: 'Asia/Dubai', iata: 'DXB', name: 'Dubai Intl', city: 'Dubai, UAE',
     lat: 25.2532, lon: 55.3657, elevFt: 62, decl: 2,
@@ -236,6 +249,7 @@ export const AIRLINES = {
   CFG: 'Condor', THY: 'Turkish', EZY: 'Easy', RYR: 'Ryanair', SKY: 'Skymark', SFJ: 'Starflyer',
   HDA: 'Dragon', CRK: 'Bauhinia', CES: 'China Eastern', CSN: 'China Southern', CCA: 'Air China',
   FDB: 'Sky Dubai', ETD: 'Etihad', AIC: 'Air India', PIA: 'Pakistan', IBE: 'Iberia',
+  ALK: 'SriLankan', IGO: 'IFly', MAS: 'Malaysian',
 };
 
 export function airlineName(callsign) {

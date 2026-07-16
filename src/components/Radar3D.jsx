@@ -64,8 +64,8 @@ function buildLightGeo() {
   return geo;
 }
 
-// Rotorcraft: proper fuselage + tail boom + tail rotor, with a real MAIN ROTOR
-// of four thin blades on a mast (not a flat disc).
+// Rotorcraft: proper fuselage + tail boom + tail rotor. The MAIN ROTOR is a
+// separate geometry (child mesh) so it can spin in the render loop.
 function buildHeliGeo() {
   const parts = [];
   const body = new THREE.SphereGeometry(0.42, 10, 8);
@@ -83,11 +83,18 @@ function buildHeliGeo() {
   const mast = new THREE.CylinderGeometry(0.05, 0.05, 0.34, 6);
   mast.translate(0, 0.5, 0.1);
   parts.push(mast);
-  // four thin main-rotor blades in a cross at the mast top
+  const geo = mergeParts(parts);
+  geo.scale(1.5, 1.5, 1.5);
+  return geo;
+}
+
+// Four thin main-rotor blades in a cross, centered on the hub so the child
+// mesh can rotate about Y (mounted at the mast top in getObj).
+function buildRotorGeo() {
+  const parts = [];
   for (let i = 0; i < 4; i++) {
     const blade = new THREE.BoxGeometry(2.5, 0.04, 0.18);
     blade.rotateY((i * Math.PI) / 2);
-    blade.translate(0, 0.66, 0.1);
     parts.push(blade);
   }
   const geo = mergeParts(parts);
@@ -262,6 +269,7 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
       glider: buildLightGeo(),
       unknown: buildUnknownGeo(),
     };
+    const rotorGeo = buildRotorGeo();
     // Generous invisible raycast target — clicking a 6px silhouette precisely
     // is unreasonable; the hit sphere is what selection actually tests.
     const hitGeo = new THREE.SphereGeometry(2.6, 6, 4);
@@ -270,11 +278,20 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
     function getObj(id, kind) {
       let o = pool.get(id);
       if (o) { // swap geometry if the classified kind changed
-        if (o.kind !== kind) { o.cone.geometry = GEO[kind] || GEO.jet; o.kind = kind; }
+        if (o.kind !== kind) {
+          o.cone.geometry = GEO[kind] || GEO.jet;
+          o.kind = kind;
+          o.rotor.visible = kind === 'heli';
+        }
         return o;
       }
       const group = new THREE.Group();
       const cone = new THREE.Mesh(GEO[kind] || GEO.jet, mats.ENROUTE);
+      // spinning main rotor, mounted at the mast top; visible for helis only
+      const rotor = new THREE.Mesh(rotorGeo, mats.ENROUTE);
+      rotor.position.set(0, 0.99, 0.15);
+      rotor.visible = kind === 'heli';
+      cone.add(rotor);
       const stemGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
       const stem = new THREE.Line(stemGeo, mats.line_ENROUTE);
       const base = new THREE.Mesh(new THREE.CircleGeometry(0.55, 10), new THREE.MeshBasicMaterial({ color: 0x3ddc97, transparent: true, opacity: 0.35 }));
@@ -288,7 +305,7 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
       const trailLine = new THREE.Line(trailGeo, mats.trail_ENROUTE);
       trailLine.frustumCulled = false;
       scene.add(group, trailLine);
-      o = { group, cone, stem, base, selRing, hit, trailLine, kind };
+      o = { group, cone, rotor, stem, base, selRing, hit, trailLine, kind };
       pool.set(id, o);
       return o;
     }
@@ -397,6 +414,11 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
         const pitch = ac.onGround || o.kind === 'heli' || o.kind === 'unknown'
           ? 0 : Math.max(-0.38, Math.min(0.38, (ac.vs || 0) / 3500));
         o.cone.rotation.x = -pitch;
+        // spinning main rotor — faster airborne, idle on the ground
+        if (o.rotor.visible) {
+          o.rotor.material = o.cone.material;
+          o.rotor.rotation.y = ((now / 1000) * (ac.onGround ? 3 : 9)) % (Math.PI * 2);
+        }
         o.selRing.visible = isSel || isConflict;
         o.selRing.material.color.setHex(isSel ? PHASE_COLORS.selected : PHASE_COLORS.conflict);
         o.selRing.rotation.x = -Math.PI / 2;

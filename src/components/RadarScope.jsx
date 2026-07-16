@@ -81,8 +81,8 @@ function drawLight(ctx, x, y, trackDeg, size) {
 }
 
 // Rotorcraft: teardrop cabin + tail boom with a tail-rotor stub, and a main
-// rotor drawn as two thin crossed blades over a hub.
-function drawHeli(ctx, x, y, trackDeg, size) {
+// rotor of two crossed blades that SPIN (angle driven by wall clock).
+function drawHeli(ctx, x, y, trackDeg, size, spin = 0) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate((trackDeg * Math.PI) / 180);
@@ -95,14 +95,18 @@ function drawHeli(ctx, x, y, trackDeg, size) {
   // tail boom + tail rotor
   ctx.fillRect(-0.06, 0.22, 0.12, 0.72);
   ctx.fillRect(-0.22, 0.9, 0.44, 0.08);
-  // main rotor: two thin blades crossed, with a small hub
+  // main rotor: crossed blades rotating about the hub
   ctx.strokeStyle = col;
   ctx.lineCap = 'round';
   ctx.lineWidth = 0.1;
+  ctx.save();
+  ctx.translate(0, -0.18);
+  ctx.rotate(spin);
   ctx.beginPath();
-  ctx.moveTo(-0.95, -0.35); ctx.lineTo(0.95, -0.01);   // blade 1
-  ctx.moveTo(-0.7, 0.55);   ctx.lineTo(0.7, -0.9);      // blade 2
+  ctx.moveTo(-0.95, 0); ctx.lineTo(0.95, 0);
+  ctx.moveTo(0, -0.95); ctx.lineTo(0, 0.95);
   ctx.stroke();
+  ctx.restore();
   ctx.beginPath();
   ctx.arc(0, -0.18, 0.12, 0, Math.PI * 2);              // rotor hub
   ctx.fill();
@@ -127,8 +131,8 @@ function drawUnknown(ctx, x, y, trackDeg, size) {
   ctx.restore();
 }
 
-function drawIcon(ctx, kind, x, y, track, size) {
-  if (kind === 'heli') return drawHeli(ctx, x, y, track, size);
+function drawIcon(ctx, kind, x, y, track, size, spin = 0) {
+  if (kind === 'heli') return drawHeli(ctx, x, y, track, size, spin);
   if (kind === 'light') return drawLight(ctx, x, y, track, size);
   if (kind === 'unknown') return drawUnknown(ctx, x, y, track, size);
   return drawPlane(ctx, x, y, track, size);
@@ -417,10 +421,11 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
           ctx.stroke();
         }
 
-        // blip — real silhouettes by aircraft kind
+        // blip — real silhouettes by aircraft kind (heli rotors spin)
         ctx.fillStyle = color;
         const kind = iconKind(ac);
-        drawIcon(ctx, kind, sx, sy, ac.track, kind === 'heli' ? 5.5 : ac.onGround ? 4.5 : 6);
+        const spin = ((now / 1000) * (ac.onGround ? 2.5 : 7)) % (Math.PI * 2);
+        drawIcon(ctx, kind, sx, sy, ac.track, kind === 'heli' ? 5.5 : ac.onGround ? 4.5 : 6, spin);
 
         if (isSel) {
           ctx.strokeStyle = COLORS.selected;
