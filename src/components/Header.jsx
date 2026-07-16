@@ -21,7 +21,7 @@ export default function Header({ airport, icao, setIcao, mode, source, forceSim,
       <div className="brand">
         <img className="brand-logo" src="/naventra-mark.svg" alt="Naventra — control tower in a radar sweep" width="30" height="30" />
         <div>
-          <div className="brand-name">naventra</div>
+          <div className="brand-name">Naventra</div>
           <div className="brand-sub">AI Air Traffic Command</div>
         </div>
       </div>
