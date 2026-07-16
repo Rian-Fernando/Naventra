@@ -8,13 +8,14 @@ const TABS = [
   { key: 'GND', label: 'Ground', icon: CircleDot, phases: ['GROUND'] },
 ];
 
-export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect }) {
+export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect, airline }) {
   const [tab, setTab] = useState('ARR');
   const active = TABS.find((t) => t.key === tab);
   const conflictIds = new Set(conflicts.flatMap((c) => [c.a.id, c.b.id]));
 
   const rows = aircraft
     .filter((a) => active.phases.includes(a.phase))
+    .filter((a) => !airline || (a.callsign || '').slice(0, 3).toUpperCase() === airline)
     .sort((a, b) => (a.seq ?? 99) - (b.seq ?? 99) || a.distNm - b.distNm);
 
   return (

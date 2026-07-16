@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAtcSystem } from './hooks/useAtcSystem.js';
+import { useViewPrefs } from './hooks/useViewPrefs.js';
 import Header from './components/Header.jsx';
 import RadarPanel from './components/RadarPanel.jsx';
 import FlightStrips from './components/FlightStrips.jsx';
@@ -42,56 +43,87 @@ function usePathRoute() {
 
 export default function App() {
   const atc = useAtcSystem();
+  const view = useViewPrefs();
   const route = usePathRoute();
   const onGuide = route.startsWith('/guide');
 
-  // Keep the canonical URL in step with the route.
   useEffect(() => {
     const link = document.querySelector('link[rel="canonical"]');
     if (link) link.href = `https://naventra.rianfernando.com${onGuide ? '/guide' : '/'}`;
     document.title = onGuide ? "Operator's Guide — Naventra" : 'Naventra — AI Air Traffic Command';
   }, [onGuide]);
 
+  const { panels } = view.prefs;
+  const leftV = panels.strips || panels.runways;
+  const centerV = panels.radar;
+  const rightV = panels.scorecard || panels.separation || panels.feed || panels.weather;
+  const nCols = [leftV, centerV, rightV].filter(Boolean).length;
+  const anyMain = nCols > 0;
+
+  // Reflow the grid to fill whatever's visible; leave the default (all three
+  // columns) to CSS so the responsive breakpoints keep working.
+  const cols = [];
+  if (leftV) cols.push(centerV ? '300px' : 'minmax(0, 1fr)');
+  if (centerV) cols.push('minmax(0, 1fr)');
+  if (rightV) cols.push(centerV ? '340px' : 'minmax(0, 1fr)');
+  const customCols = !(leftV && centerV && rightV);
+  const mainStyle = customCols ? { gridTemplateColumns: cols.join(' ') } : undefined;
+  const shellStyle = panels.comms ? undefined : { gridTemplateRows: onGuide ? '54px 1fr' : '54px 1fr' };
+
   return (
-    <div className={`shell ${onGuide ? 'shell-guide' : ''}`}>
+    <div className={`shell ${onGuide ? 'shell-guide' : ''}`} style={onGuide ? undefined : shellStyle}>
       <Header
         airport={atc.airport} icao={atc.icao} setIcao={atc.setIcao}
         mode={atc.mode} source={atc.source}
         forceSim={atc.forceSim} setForceSim={atc.setForceSim}
         kpis={atc.kpis} scorecard={atc.scorecard} onGuide={onGuide}
+        view={view}
       />
 
       {onGuide ? (
         <Guide />
       ) : (
         <>
-          <div className="main">
-            <div className="col">
-              <FlightStrips
-                aircraft={atc.aircraft} conflicts={atc.conflicts}
-                selectedId={atc.selectedId} onSelect={atc.setSelectedId}
-              />
-              <RunwayPanel runways={atc.runways} />
-            </div>
+          <div className="main" style={mainStyle}>
+            {!anyMain && (
+              <div className="empty-note" style={{ margin: 'auto' }}>
+                All panels hidden — open the ☰ menu to bring panels back.
+              </div>
+            )}
+            {leftV && (
+              <div className="col">
+                {panels.strips && (
+                  <FlightStrips
+                    aircraft={atc.aircraft} conflicts={atc.conflicts} airline={view.prefs.airline}
+                    selectedId={atc.selectedId} onSelect={atc.setSelectedId}
+                  />
+                )}
+                {panels.runways && <RunwayPanel runways={atc.runways} />}
+              </div>
+            )}
 
-            <div className="col" style={{ position: 'relative' }}>
-              <RadarPanel
-                airport={atc.airport} aircraft={atc.aircraft} conflicts={atc.conflicts}
-                runways={atc.runways} selectedId={atc.selectedId} onSelect={atc.setSelectedId}
-                mode={atc.mode}
-              />
-              <AircraftDetail aircraft={atc.selected} onClose={() => atc.setSelectedId(null)} />
-            </div>
+            {centerV && (
+              <div className="col" style={{ position: 'relative' }}>
+                <RadarPanel
+                  airport={atc.airport} aircraft={atc.aircraft} conflicts={atc.conflicts}
+                  runways={atc.runways} selectedId={atc.selectedId} onSelect={atc.setSelectedId}
+                  mode={atc.mode} view={view}
+                />
+                <AircraftDetail aircraft={atc.selected} onClose={() => atc.setSelectedId(null)} />
+              </div>
+            )}
 
-            <div className="col">
-              <ScorecardPanel scorecard={atc.scorecard} mode={atc.mode} scope={atc.scoreScope} globalTotals={atc.globalTotals} />
-              <ConflictPanel conflicts={atc.conflicts} onSelect={atc.setSelectedId} />
-              <AIDecisionFeed decisions={atc.decisions} />
-              <WeatherPanel weather={atc.weather} airport={atc.airport} />
-            </div>
+            {rightV && (
+              <div className="col">
+                {panels.scorecard && <ScorecardPanel scorecard={atc.scorecard} mode={atc.mode} scope={atc.scoreScope} globalTotals={atc.globalTotals} />}
+                {panels.separation && <ConflictPanel conflicts={atc.conflicts} onSelect={atc.setSelectedId} />}
+                {panels.feed && <AIDecisionFeed decisions={atc.decisions} />}
+                {panels.weather && <WeatherPanel weather={atc.weather} airport={atc.airport} />}
+              </div>
+            )}
           </div>
 
-          <CommsLog comms={atc.comms} airport={atc.airport} />
+          {panels.comms && <CommsLog comms={atc.comms} airport={atc.airport} />}
         </>
       )}
     </div>

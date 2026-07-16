@@ -150,7 +150,9 @@ body {
   border: 1px solid var(--line);
   border-radius: 6px;
   min-width: 0;
-  overflow: hidden;
+  /* visible so the console-menu dropdown can escape; horizontal overflow is
+     prevented by the shrink/hide rules on header items, not by clipping. */
+  overflow: visible;
 }
 
 .brand {
@@ -353,6 +355,141 @@ body {
   margin-right: 6px;
   vertical-align: -1px;
 }
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 9.5px;
+  padding: 1px 0;
+  text-align: left;
+}
+.legend-row.toggle { cursor: pointer; }
+.legend-row.toggle:hover { color: var(--text); }
+.legend-row.off { color: var(--muted); text-decoration: line-through; }
+
+.rc-airline select {
+  background: rgba(7, 12, 17, 0.88);
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 5px 6px;
+  cursor: pointer;
+  max-width: 150px;
+  outline: none;
+}
+.rc-airline select option { background: var(--panel); }
+
+/* ---------------------------------------------------------- console menu -- */
+
+.cmenu { position: relative; flex-shrink: 0; }
+
+.cmenu-btn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-bright);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cmenu-btn:hover { color: var(--green); border-color: var(--green-dim); }
+
+.cmenu-pop {
+  position: absolute;
+  top: 42px;
+  left: 0;
+  z-index: 50;
+  width: 234px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  padding: 6px;
+  animation: stripIn 0.16s ease;
+}
+
+.cmenu-sec { padding: 6px 4px; }
+.cmenu-sec + .cmenu-sec { border-top: 1px solid var(--line); }
+
+.cmenu-h {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 2px 6px 6px;
+}
+
+.cmenu-reset {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--cyan);
+  font: inherit;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  text-transform: none;
+}
+.cmenu-reset:hover { text-decoration: underline; }
+
+.cmenu-link,
+.cmenu-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 8px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11.5px;
+  text-decoration: none;
+  cursor: pointer;
+  text-align: left;
+}
+.cmenu-link:hover,
+.cmenu-toggle:hover { background: rgba(29, 50, 66, 0.5); color: var(--text); }
+.cmenu-link svg { color: var(--green); flex-shrink: 0; }
+
+.cmenu-box {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  border: 1px solid var(--line-bright);
+  display: grid;
+  place-items: center;
+  color: var(--bg);
+  flex-shrink: 0;
+}
+.cmenu-toggle.on .cmenu-box { background: var(--green); border-color: var(--green); }
+.cmenu-toggle.on { color: var(--text); }
+
+.cmenu-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 0 4px; }
+.cmenu-preset {
+  padding: 6px 4px;
+  background: var(--bg);
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.cmenu-preset:hover { color: var(--green); border-color: var(--green-dim); }
 
 /* ---------------------------------------------------------- flight strips */
 

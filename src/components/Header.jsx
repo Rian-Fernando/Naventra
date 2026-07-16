@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { MapPin, BookOpen, ExternalLink } from 'lucide-react';
 import { AIRPORT_LIST } from '../data/airports.js';
 import { TRACKED_HUBS, trackerConfigured } from '../lib/globalModel.js';
+import ConsoleMenu from './ConsoleMenu.jsx';
 
-export default function Header({ airport, icao, setIcao, mode, source, forceSim, setForceSim, kpis, scorecard, onGuide }) {
+export default function Header({ airport, icao, setIcao, mode, source, forceSim, setForceSim, kpis, scorecard, onGuide, view }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -18,6 +19,9 @@ export default function Header({ airport, icao, setIcao, mode, source, forceSim,
 
   return (
     <header className="header">
+      {view && !onGuide && (
+        <ConsoleMenu prefs={view.prefs} togglePanel={view.togglePanel} applyPreset={view.applyPreset} reset={view.reset} />
+      )}
       <div className="brand">
         <img className="brand-logo" src="/naventra-mark.svg" alt="Naventra — control tower in a radar sweep" width="30" height="30" />
         <div>
