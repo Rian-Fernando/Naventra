@@ -1,10 +1,11 @@
 import { Target } from 'lucide-react';
 
 // AI vs reality: locked predictions graded against observed outcomes.
-export default function ScorecardPanel({ scorecard, mode, scope = 'session' }) {
+export default function ScorecardPanel({ scorecard, mode, scope = 'session', globalTotals }) {
   const sc = scorecard;
   const all = sc?.allTime;
   const global = scope === 'global';
+  const processed = globalTotals?.learned || 0;
 
   return (
     <div className="panel score-panel">
@@ -15,6 +16,14 @@ export default function ScorecardPanel({ scorecard, mode, scope = 'session' }) {
           {global ? '● GLOBAL · 24/7' : mode === 'LIVE' ? 'LIVE-VERIFIED' : 'SIM · NOT BANKED'}
         </span>
       </div>
+
+      {globalTotals && (
+        <div className="learn-strip" title="The always-on tracker runs 24/7 and learns from every real landing it grades across JFK, LAX and LHR">
+          <span className="ls-dot" />
+          <b>{processed.toLocaleString()}</b> real landing{processed === 1 ? '' : 's'} processed
+          <span className="ls-tag">SELF-LEARNING · 24/7</span>
+        </div>
+      )}
 
       <div className="score-hero">
         <div className="score-num">

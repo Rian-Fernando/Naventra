@@ -84,7 +84,7 @@ export default function App() {
             </div>
 
             <div className="col">
-              <ScorecardPanel scorecard={atc.scorecard} mode={atc.mode} scope={atc.scoreScope} />
+              <ScorecardPanel scorecard={atc.scorecard} mode={atc.mode} scope={atc.scoreScope} globalTotals={atc.globalTotals} />
               <ConflictPanel conflicts={atc.conflicts} onSelect={atc.setSelectedId} />
               <AIDecisionFeed decisions={atc.decisions} />
               <WeatherPanel weather={atc.weather} airport={atc.airport} />

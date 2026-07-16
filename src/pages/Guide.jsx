@@ -81,6 +81,53 @@ export default function Guide() {
           all visitors — marked <b>GLOBAL · 24/7</b>. Other airports show your live session's own tally.
         </p>
 
+        <h2>How the self-learning actually works</h2>
+        <p>
+          "Self-learning" here means something specific and verifiable, not a buzzword. Two learned
+          parameters are updated by <b>every real landing the system grades</b>:
+        </p>
+        <ol className="guide-steps">
+          <li>
+            <b>Runway priors — P(runway | approach direction).</b> The approach bearing is bucketed into
+            eight compass sectors. For each sector the model keeps a smoothed tally of which runway end
+            arrivals from that direction actually landed on. Over time this encodes the facility's real
+            habits — e.g. "traffic joining from the north-east at JFK almost always gets 22L" — and that
+            learned probability is blended into the geometric runway score, so the next prediction leans the
+            way reality has been leaning. Pure geometry from 16&nbsp;nm out can't see that; the data can.
+          </li>
+          <li>
+            <b>ETA bias — a running error correction.</b> Each landing compares the predicted touchdown time
+            to the actual one. The signed error feeds an exponential moving average, which is subtracted
+            from future estimates. If this airport's approaches systematically run, say, 40&nbsp;s slower
+            than the raw model expects, the system learns that offset and stops making the same mistake.
+          </li>
+        </ol>
+        <p>
+          The loop is <b>predict → observe → measure error → adjust → repeat</b>, running on live outcomes.
+          It's <em>online</em> learning: no training run, no dataset to download — the model improves one
+          real landing at a time, and the scorecard shows whether it's actually working. Only live landings
+          update it (never the simulation), so it learns the real world, not itself.
+        </p>
+
+        <h2>No API keys · no paid model · $0</h2>
+        <p>
+          People assume "AI that learns" implies a large language model and a metered API bill. Naventra
+          has neither. The decision core is a <b>deterministic expert system</b> — explicit, auditable rules
+          that encode real ATC procedure (wind-component runway selection, closest-point-of-approach
+          separation math, ETA sequencing) — wrapped in the online-learning loop above. There is <b>no LLM
+          anywhere</b>, so there is nothing to hold an API key for and nothing to meter.
+        </p>
+        <p>
+          Every data source is <b>free and keyless</b>: live traffic from the open <b>airplanes.live</b>
+          ADS-B feed (with adsb.lol / adsb.fi as failovers), weather from the US government's
+          <b> aviationweather.gov</b> METAR service. The browser app is static hosting; the always-on
+          tracker is a <b>Cloudflare Worker</b> (free tier: a 1-minute cron is well under the limits) writing
+          to a <b>free D1 database</b>. The math is a few hundred lines of plain JavaScript that runs the same
+          in your browser and in the Worker. The result: a system that genuinely learns and runs around the
+          clock, for nothing — because the intelligence is in the modelling and the feedback loop, not in
+          renting someone else's model.
+        </p>
+
         <h2>Screen map</h2>
         <div className="guide-map">
           <div className="gm gm-header">HEADER — facility selector · LIVE/SIM · traffic KPIs · UTC clock</div>

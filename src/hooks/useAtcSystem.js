@@ -29,6 +29,7 @@ export function useAtcSystem() {
   const [selectedId, setSelectedId] = useState(null);
   const [scorecard, setScorecard] = useState(null);
   const [globalScorecard, setGlobalScorecard] = useState(null);
+  const [globalTotals, setGlobalTotals] = useState(null); // aggregate across all hubs
 
   const airport = AIRPORTS[icao];
 
@@ -122,9 +123,12 @@ export function useAtcSystem() {
     const tracked = TRACKED_HUBS.includes(icao);
 
     async function pollScore() {
-      if (!tracked) return;
-      const sc = await fetchGlobalScorecard(icao);
-      if (!stop && sc) setGlobalScorecard(sc);
+      if (tracked) {
+        const sc = await fetchGlobalScorecard(icao);
+        if (!stop && sc) setGlobalScorecard(sc);
+      }
+      const agg = await fetchGlobalScorecard(null); // fleet-wide totals
+      if (!stop && agg) setGlobalTotals({ learned: agg.learned, n: agg.allTime.n, pct: agg.allTime.pct });
     }
     async function pollModels() {
       const payload = await fetchGlobalModels();
@@ -236,7 +240,7 @@ export function useAtcSystem() {
     airport, icao, setIcao,
     mode, source, forceSim, setForceSim,
     weather, aircraft, runways, conflicts, decisions, comms, kpis,
-    scorecard: shownScorecard, scoreScope,
+    scorecard: shownScorecard, scoreScope, globalTotals,
     selected, selectedId, setSelectedId,
   };
 }

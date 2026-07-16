@@ -13,4 +13,4 @@ crons = ["* * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "naventra"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "f5eceff6-eec3-41d8-a42f-6dadae7a8e31"

@@ -15,9 +15,9 @@ export const TRACKED_HUBS = ['KJFK', 'KLAX', 'EGLL'];
 export async function fetchGlobalScorecard(icao) {
   if (!BASE) return null;
   try {
-    const res = await fetch(`${BASE}/api/scorecard?icao=${encodeURIComponent(icao)}`, {
-      signal: AbortSignal.timeout(6000),
-    });
+    // No icao → the worker returns the aggregate across all tracked hubs.
+    const q = icao ? `?icao=${encodeURIComponent(icao)}` : '';
+    const res = await fetch(`${BASE}/api/scorecard${q}`, { signal: AbortSignal.timeout(6000) });
     if (!res.ok) return null;
     return await res.json();
   } catch {

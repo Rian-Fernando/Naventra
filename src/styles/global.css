@@ -641,6 +641,30 @@ body {
 
 .score-panel { flex-shrink: 0; max-height: 300px; }
 
+.learn-strip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 10px 0;
+  padding: 6px 11px;
+  border: 1px solid var(--cyan-dim);
+  border-radius: 5px;
+  background: linear-gradient(90deg, rgba(76, 201, 240, 0.12), rgba(76, 201, 240, 0.03));
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.learn-strip b { color: var(--cyan); font-family: var(--font-display); font-size: 15px; letter-spacing: 0.03em; }
+.ls-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--cyan); box-shadow: 0 0 8px var(--cyan);
+  animation: pulse 1.6s ease-in-out infinite; flex-shrink: 0;
+}
+.ls-tag {
+  margin-left: auto; font-size: 8px; letter-spacing: 0.14em;
+  color: var(--cyan); border: 1px solid var(--cyan-dim); border-radius: 3px;
+  padding: 2px 6px; white-space: nowrap;
+}
+
 .score-hero {
   display: flex;
   align-items: center;
