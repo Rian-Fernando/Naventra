@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MapPin, BookOpen, ExternalLink } from 'lucide-react';
 import { AIRPORT_LIST } from '../data/airports.js';
+import { TRACKED_HUBS, trackerConfigured } from '../lib/globalModel.js';
 
 export default function Header({ airport, icao, setIcao, mode, source, forceSim, setForceSim, kpis, scorecard, onGuide }) {
   const [now, setNow] = useState(new Date());
@@ -28,11 +29,24 @@ export default function Header({ airport, icao, setIcao, mode, source, forceSim,
       <div className="facility">
         <MapPin size={13} color="var(--green)" />
         <select value={icao} onChange={(e) => setIcao(e.target.value)} title="Facility">
-          {AIRPORT_LIST.map((a) => (
-            <option key={a.icao} value={a.icao}>
-              {a.iata} — {a.name}
-            </option>
-          ))}
+          {trackerConfigured ? (
+            <>
+              <optgroup label="Always-on hubs · 24/7 model">
+                {AIRPORT_LIST.filter((a) => TRACKED_HUBS.includes(a.icao)).map((a) => (
+                  <option key={a.icao} value={a.icao}>◉ {a.iata} — {a.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Live view · session learning">
+                {AIRPORT_LIST.filter((a) => !TRACKED_HUBS.includes(a.icao)).map((a) => (
+                  <option key={a.icao} value={a.icao}>{a.iata} — {a.name}</option>
+                ))}
+              </optgroup>
+            </>
+          ) : (
+            AIRPORT_LIST.map((a) => (
+              <option key={a.icao} value={a.icao}>{a.iata} — {a.name}</option>
+            ))
+          )}
         </select>
       </div>
 
