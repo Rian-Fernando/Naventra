@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { toLocalNm, deadReckon, fmtFL } from '../lib/geo.js';
+import { iconKind } from '../lib/aircraftIcon.js';
 
 const COLORS = {
   FINAL: '#57f2ae',
@@ -15,55 +16,122 @@ const COLORS = {
 const SWEEP_PERIOD_MS = 4600;
 const FT_PER_NM = 6076.12;
 
-// Top-down airliner silhouette, nose up, unit-scaled; rotated to the track.
+// Top-down airliner silhouette (swept wings, engine nacelles), nose up.
 function drawPlane(ctx, x, y, trackDeg, size) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate((trackDeg * Math.PI) / 180);
   ctx.scale(size, size);
   ctx.beginPath();
-  ctx.moveTo(0, -1.0);              // nose
-  ctx.lineTo(0.16, -0.62);
-  ctx.lineTo(0.16, -0.18);
-  ctx.lineTo(0.95, 0.22);           // right wing
-  ctx.lineTo(0.95, 0.42);
-  ctx.lineTo(0.16, 0.22);
-  ctx.lineTo(0.14, 0.62);
-  ctx.lineTo(0.42, 0.85);           // right tailplane
-  ctx.lineTo(0.42, 1.0);
-  ctx.lineTo(0, 0.88);
-  ctx.lineTo(-0.42, 1.0);           // left tailplane
-  ctx.lineTo(-0.42, 0.85);
-  ctx.lineTo(-0.14, 0.62);
-  ctx.lineTo(-0.16, 0.22);
-  ctx.lineTo(-0.95, 0.42);          // left wing
-  ctx.lineTo(-0.95, 0.22);
-  ctx.lineTo(-0.16, -0.18);
-  ctx.lineTo(-0.16, -0.62);
+  ctx.moveTo(0, -1.05);              // nose
+  ctx.quadraticCurveTo(0.13, -0.9, 0.13, -0.55);
+  ctx.lineTo(0.13, -0.2);
+  ctx.lineTo(0.98, 0.28);            // right wing (swept back)
+  ctx.lineTo(0.98, 0.46);
+  ctx.lineTo(0.13, 0.16);
+  ctx.lineTo(0.12, 0.66);
+  ctx.lineTo(0.4, 0.9);             // right tailplane
+  ctx.lineTo(0.4, 1.04);
+  ctx.lineTo(0, 0.86);
+  ctx.lineTo(-0.4, 1.04);           // left tailplane
+  ctx.lineTo(-0.4, 0.9);
+  ctx.lineTo(-0.12, 0.66);
+  ctx.lineTo(-0.13, 0.16);
+  ctx.lineTo(-0.98, 0.46);          // left wing
+  ctx.lineTo(-0.98, 0.28);
+  ctx.lineTo(-0.13, -0.2);
+  ctx.lineTo(-0.13, -0.55);
+  ctx.quadraticCurveTo(-0.13, -0.9, 0, -1.05);
   ctx.closePath();
   ctx.fill();
+  // engine nacelles under the wings
+  ctx.fillRect(0.38, 0.02, 0.14, 0.2);
+  ctx.fillRect(-0.52, 0.02, 0.14, 0.2);
   ctx.restore();
 }
 
-// Rotorcraft: cabin + tail boom + rotor bar.
-function drawHeli(ctx, x, y, trackDeg, size) {
+// Light GA: straight (unswept) wings, stubbier body — reads as a small prop.
+function drawLight(ctx, x, y, trackDeg, size) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate((trackDeg * Math.PI) / 180);
   ctx.scale(size, size);
   ctx.beginPath();
-  ctx.ellipse(0, -0.1, 0.34, 0.5, 0, 0, Math.PI * 2);
+  ctx.moveTo(0, -0.95);
+  ctx.lineTo(0.1, -0.5);
+  ctx.lineTo(0.1, -0.12);
+  ctx.lineTo(0.92, -0.02);          // straight wing, no sweep
+  ctx.lineTo(0.92, 0.14);
+  ctx.lineTo(0.1, 0.12);
+  ctx.lineTo(0.1, 0.72);
+  ctx.lineTo(0.34, 0.86);           // tailplane
+  ctx.lineTo(0.34, 0.98);
+  ctx.lineTo(0, 0.82);
+  ctx.lineTo(-0.34, 0.98);
+  ctx.lineTo(-0.34, 0.86);
+  ctx.lineTo(-0.1, 0.72);
+  ctx.lineTo(-0.1, 0.12);
+  ctx.lineTo(-0.92, 0.14);
+  ctx.lineTo(-0.92, -0.02);
+  ctx.lineTo(-0.1, -0.12);
+  ctx.lineTo(-0.1, -0.5);
+  ctx.closePath();
   ctx.fill();
-  ctx.fillRect(-0.08, 0.3, 0.16, 0.75); // tail boom
-  ctx.lineWidth = 0.16;
+  ctx.restore();
+}
+
+// Rotorcraft: teardrop cabin + tail boom with a tail-rotor stub, and a main
+// rotor drawn as two thin crossed blades over a hub.
+function drawHeli(ctx, x, y, trackDeg, size) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate((trackDeg * Math.PI) / 180);
+  ctx.scale(size, size);
+  const col = ctx.fillStyle;
+  // cabin
+  ctx.beginPath();
+  ctx.ellipse(0, -0.18, 0.3, 0.46, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // tail boom + tail rotor
+  ctx.fillRect(-0.06, 0.22, 0.12, 0.72);
+  ctx.fillRect(-0.22, 0.9, 0.44, 0.08);
+  // main rotor: two thin blades crossed, with a small hub
+  ctx.strokeStyle = col;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 0.1;
+  ctx.beginPath();
+  ctx.moveTo(-0.95, -0.35); ctx.lineTo(0.95, -0.01);   // blade 1
+  ctx.moveTo(-0.7, 0.55);   ctx.lineTo(0.7, -0.9);      // blade 2
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, -0.18, 0.12, 0, Math.PI * 2);              // rotor hub
+  ctx.fill();
+  ctx.restore();
+}
+
+// Unknown emitter (no category, no type): a hollow chevron — clearly "raw
+// contact, unclassified" versus the solid known-aircraft shapes.
+function drawUnknown(ctx, x, y, trackDeg, size) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate((trackDeg * Math.PI) / 180);
+  ctx.scale(size, size);
   ctx.strokeStyle = ctx.fillStyle;
-  ctx.beginPath();                       // rotor
-  ctx.moveTo(-0.8, -0.75);
-  ctx.lineTo(0.8, 0.55);
-  ctx.moveTo(0.8, -0.75);
-  ctx.lineTo(-0.8, 0.55);
+  ctx.lineWidth = 0.16;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-0.62, 0.5);
+  ctx.lineTo(0, -0.7);
+  ctx.lineTo(0.62, 0.5);
   ctx.stroke();
   ctx.restore();
+}
+
+function drawIcon(ctx, kind, x, y, track, size) {
+  if (kind === 'heli') return drawHeli(ctx, x, y, track, size);
+  if (kind === 'light') return drawLight(ctx, x, y, track, size);
+  if (kind === 'unknown') return drawUnknown(ctx, x, y, track, size);
+  return drawPlane(ctx, x, y, track, size);
 }
 
 // Classic 2D top-down scope. Controlled by RadarPanel (range/labels/trails).
@@ -284,8 +352,20 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
         return Math.hypot(sx - cx, sy - cy) <= radius;
       }).length;
 
+      // Sort so priority tracks (selected, conflict, on approach) claim their
+      // label space first; enroute clutter yields when the centre is busy.
+      const drawOrder = [...acs].sort((a, b) => rank(a) - rank(b));
+      function rank(a) {
+        if (a.id === selId) return 0;
+        if (conflictIds.has(a.id)) return 1;
+        return { FINAL: 2, APPROACH: 3, ARRIVAL: 4, DEPARTURE: 5, GROUND: 7 }[a.phase] ?? 6;
+      }
+      const labelRects = []; // occupied label boxes for collision suppression
+      const collides = (x, y, w, h) =>
+        labelRects.some((r) => x < r.x + r.w && x + w > r.x && y < r.y + r.h && y + h > r.y);
+
       // -- aircraft
-      for (const ac of acs) {
+      for (const ac of drawOrder) {
         const extrapolate = Math.min((now - ac.seenAt) / 1000, 60);
         const dr = deadReckon(ac.lat, ac.lon, ac.onGround ? Math.min(ac.gs, 30) : ac.gs, ac.track, extrapolate);
         const [sx, sy] = toXY(dr.lat, dr.lon);
@@ -337,13 +417,10 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
           ctx.stroke();
         }
 
-        // blip — real silhouettes: airliner, rotorcraft, or ground target
+        // blip — real silhouettes by aircraft kind
         ctx.fillStyle = color;
-        if (ac.category === 'A7') {
-          drawHeli(ctx, sx, sy, ac.track, 5.5);
-        } else {
-          drawPlane(ctx, sx, sy, ac.track, ac.onGround ? 4.5 : 6);
-        }
+        const kind = iconKind(ac);
+        drawIcon(ctx, kind, sx, sy, ac.track, kind === 'heli' ? 5.5 : ac.onGround ? 4.5 : 6);
 
         if (isSel) {
           ctx.strokeStyle = COLORS.selected;
@@ -368,11 +445,18 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
           labelMode === 'ALL' ||
           (labelMode === 'AUTO' && (important || totalShown < 26)) ||
           isSel || isConflict;
-        if (showLabel) {
-          const flipX = sx > width - 96;
-          const flipY = sy < 46;
-          const lx = flipX ? sx - 12 : sx + 12;
-          const ly = flipY ? sy + 16 : sy - 16;
+        // Suppress labels that would overlap one already drawn (declutters the
+        // busy centre); selected/conflict always win their space.
+        const flipX = sx > width - 96;
+        const flipY = sy < 46;
+        const lx = flipX ? sx - 12 : sx + 12;
+        const ly = flipY ? sy + 16 : sy - 16;
+        const lblW = 74, lblH = 22;
+        const boxX = flipX ? lx - lblW : lx;
+        const boxY = ly - 11;
+        const blocked = collides(boxX, boxY, lblW, lblH) && !isSel && !isConflict;
+        if (showLabel && !blocked) {
+          labelRects.push({ x: boxX, y: boxY, w: lblW, h: lblH });
           ctx.strokeStyle = 'rgba(143, 166, 177, 0.35)';
           ctx.lineWidth = 1;
           ctx.beginPath();
