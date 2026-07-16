@@ -58,6 +58,12 @@ export default function ConsoleMenu({ prefs, togglePanel, applyPreset, reset }) 
               </button>
             ))}
           </div>
+
+          <div className="cmenu-keys">
+            <span><kbd>[</kbd><kbd>]</kbd> facility</span>
+            <span><kbd>2</kbd><kbd>3</kbd> 2D/3D</span>
+            <span><kbd>f</kbd> fullscreen</span>
+          </div>
         </div>
       )}
     </div>

@@ -17,7 +17,8 @@ const LEGEND = [
 // category filters (legend checkboxes) and an airline filter.
 export default function RadarPanel(props) {
   const { airport, mode, aircraft, conflicts, view } = props;
-  const [scope, setScope] = useState('3D');
+  const scope = view?.prefs.radarView || '3D';
+  const setScope = view?.setRadarView || (() => {});
   const [range, setRange] = useState(40);
   const [labels, setLabels] = useState('AUTO');
   const [showTrails, setShowTrails] = useState(true);

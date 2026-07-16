@@ -22,6 +22,7 @@ const DEFAULT = {
   panels: { ...ALL_ON },
   filters: { arr: true, dep: true, enr: true, gnd: true },
   airline: null,
+  radarView: '3D',
 };
 
 // Quick layout presets for the menu.
@@ -36,7 +37,7 @@ function load() {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY));
     if (raw && raw.panels && raw.filters) {
-      return { panels: { ...ALL_ON, ...raw.panels }, filters: { ...DEFAULT.filters, ...raw.filters }, airline: raw.airline ?? null };
+      return { panels: { ...ALL_ON, ...raw.panels }, filters: { ...DEFAULT.filters, ...raw.filters }, airline: raw.airline ?? null, radarView: raw.radarView === '2D' ? '2D' : '3D' };
     }
   } catch { /* ignore */ }
   return structuredClone(DEFAULT);
@@ -56,11 +57,12 @@ export function useViewPrefs() {
     setPrefs((p) => ({ ...p, filters: { ...p.filters, [key]: !p.filters[key] } }));
   }, []);
   const setAirline = useCallback((code) => setPrefs((p) => ({ ...p, airline: code || null })), []);
+  const setRadarView = useCallback((v) => setPrefs((p) => ({ ...p, radarView: v === '2D' ? '2D' : '3D' })), []);
   const applyPreset = useCallback((name) => {
     const panels = PRESETS[name];
     if (panels) setPrefs((p) => ({ ...p, panels: { ...panels } }));
   }, []);
   const reset = useCallback(() => setPrefs(structuredClone(DEFAULT)), []);
 
-  return { prefs, togglePanel, toggleFilter, setAirline, applyPreset, reset };
+  return { prefs, togglePanel, toggleFilter, setAirline, setRadarView, applyPreset, reset };
 }

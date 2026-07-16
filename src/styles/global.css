@@ -491,6 +491,27 @@ body {
 }
 .cmenu-preset:hover { color: var(--green); border-color: var(--green-dim); }
 
+.cmenu-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 8px 8px 4px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  font-size: 9.5px;
+  color: var(--muted);
+}
+.cmenu-keys kbd {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  background: var(--bg);
+  border: 1px solid var(--line-bright);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-right: 2px;
+  color: var(--text-dim);
+}
+
 /* ---------------------------------------------------------- flight strips */
 
 .strip-tabs { display: flex; border-bottom: 1px solid var(--line); flex-shrink: 0; }
@@ -842,6 +863,17 @@ body {
 .sc-bar i { display: block; height: 100%; background: var(--green); border-radius: 2px; transition: width 0.4s; }
 .sc-pct { width: 62px; text-align: right; color: var(--text); }
 .sc-pct em { color: var(--muted); font-style: normal; font-size: 8.5px; }
+
+.score-spark {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 14px 8px;
+}
+.score-spark svg { width: 120px; height: 30px; flex-shrink: 0; }
+.spark-line { fill: none; stroke: var(--green); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.spark-base { fill: none; stroke: var(--line-bright); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.spark-lbl { font-size: 9px; color: var(--muted); letter-spacing: 0.06em; }
 
 .score-recent { border-top: 1px solid var(--line); }
 

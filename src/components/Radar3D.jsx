@@ -357,6 +357,7 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
 
       const conflictIds = new Set(confl.flatMap((c) => [c.a.id, c.b.id]));
       const liveIds = new Set();
+      let selPos = null; // world position of the selected track, for follow-cam
       const sampleTrails = now - lastTrailSample > 1800;
       if (sampleTrails) lastTrailSample = now;
 
@@ -376,6 +377,7 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
         const pz = -n * k;
         o.group.visible = true;
         o.group.position.set(px, y, pz);
+        if (ac.id === selId) selPos = new THREE.Vector3(px, y, pz);
 
         const isConflict = conflictIds.has(ac.id);
         const isSel = ac.id === selId;
@@ -453,6 +455,10 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
         conflGeo.setDrawRange(0, i);
       }
 
+      // Follow-cam: ease the orbit target onto the selected aircraft (and back
+      // to the field centre when nothing is selected). The user can still orbit.
+      const want = selPos || new THREE.Vector3(0, 0, 0);
+      controls.target.lerp(want, 0.06);
       controls.update();
       renderer.render(scene, camera);
 

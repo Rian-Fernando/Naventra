@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAtcSystem } from './hooks/useAtcSystem.js';
 import { useViewPrefs } from './hooks/useViewPrefs.js';
+import { AIRPORT_LIST } from './data/airports.js';
 import Header from './components/Header.jsx';
 import RadarPanel from './components/RadarPanel.jsx';
 import FlightStrips from './components/FlightStrips.jsx';
@@ -52,6 +53,29 @@ export default function App() {
     if (link) link.href = `https://naventra.rianfernando.com${onGuide ? '/guide' : '/'}`;
     document.title = onGuide ? "Operator's Guide — Naventra" : 'Naventra — AI Air Traffic Command';
   }, [onGuide]);
+
+  // Keyboard shortcuts: [ ] cycle facility · 2/3 scope · f fullscreen.
+  useEffect(() => {
+    if (onGuide) return undefined;
+    const onKey = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      const list = AIRPORT_LIST.map((a) => a.icao);
+      const i = list.indexOf(atc.icao);
+      if (e.key === '[') atc.setIcao(list[(i - 1 + list.length) % list.length]);
+      else if (e.key === ']') atc.setIcao(list[(i + 1) % list.length]);
+      else if (e.key === '2') view.setRadarView('2D');
+      else if (e.key === '3') view.setRadarView('3D');
+      else if (e.key === 'f') {
+        if (document.fullscreenElement) document.exitFullscreen?.();
+        else document.documentElement.requestFullscreen?.();
+      } else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onGuide, atc, view]);
 
   const { panels } = view.prefs;
   const leftV = panels.strips || panels.runways;

@@ -1,5 +1,30 @@
 import { Target } from 'lucide-react';
 
+// Rolling accuracy (trailing 8-landing window) from recent graded landings,
+// oldest→newest, as an SVG polyline — shows the AI improving over time.
+function Sparkline({ recent }) {
+  const chron = [...recent].reverse();
+  if (chron.length < 4) return null;
+  const win = 8;
+  const pts = chron.map((_, i) => {
+    const slice = chron.slice(Math.max(0, i - win + 1), i + 1).flatMap((e) => e.items);
+    const ok = slice.filter((it) => it.ok).length;
+    return slice.length ? ok / slice.length : 0;
+  });
+  const W = 210, H = 34, n = pts.length;
+  const path = pts.map((v, i) => `${((i / (n - 1)) * W).toFixed(1)},${(H - v * (H - 4) - 2).toFixed(1)}`).join(' ');
+  const last = Math.round(pts[pts.length - 1] * 100);
+  return (
+    <div className="score-spark">
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+        <polyline points={`0,${H} ${path.split(' ')[0]}`} className="spark-base" />
+        <polyline points={path} className="spark-line" />
+      </svg>
+      <span className="spark-lbl">accuracy trend · now {last}%</span>
+    </div>
+  );
+}
+
 // AI vs reality: locked predictions graded against observed outcomes.
 export default function ScorecardPanel({ scorecard, mode, scope = 'session', globalTotals }) {
   const sc = scorecard;
@@ -54,6 +79,8 @@ export default function ScorecardPanel({ scorecard, mode, scope = 'session', glo
           ))}
         </div>
       )}
+
+      {sc?.recent?.length >= 4 && <Sparkline recent={sc.recent} />}
 
       {sc?.recent?.length > 0 && (
         <div className="panel-body score-recent">

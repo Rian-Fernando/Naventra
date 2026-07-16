@@ -16,7 +16,17 @@ const MAX_DECISIONS = 80;
 const MAX_COMMS = 140;
 
 export function useAtcSystem() {
-  const [icao, setIcao] = useState('KJFK');
+  // Deep link: ?airport=KLAX selects a facility on load and is kept in the URL
+  // so any view is shareable/bookmarkable.
+  const [icao, setIcao] = useState(() => {
+    const q = new URLSearchParams(window.location.search).get('airport');
+    return q && AIRPORTS[q] ? q : 'KJFK';
+  });
+  useEffect(() => {
+    const u = new URL(window.location.href);
+    u.searchParams.set('airport', icao);
+    window.history.replaceState(null, '', u);
+  }, [icao]);
   const [forceSim, setForceSim] = useState(false);
   const [mode, setMode] = useState('CONNECTING'); // CONNECTING | LIVE | SIM
   const [source, setSource] = useState(null);
