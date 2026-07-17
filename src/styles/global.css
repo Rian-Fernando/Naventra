@@ -797,7 +797,9 @@ body {
 
 /* ---------------------------------------------------------- scorecard --- */
 
-.score-panel { flex-shrink: 0; max-height: 300px; }
+/* No hard cap on the panel: hero, category bars and the accuracy trend must
+   always be visible; only the recent-landings list scrolls (capped below). */
+.score-panel { flex-shrink: 0; }
 
 .learn-strip {
   display: flex;
@@ -875,7 +877,7 @@ body {
 .spark-base { fill: none; stroke: var(--line-bright); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .spark-lbl { font-size: 9px; color: var(--muted); letter-spacing: 0.06em; }
 
-.score-recent { border-top: 1px solid var(--line); }
+.score-recent { border-top: 1px solid var(--line); max-height: 118px; }
 
 .score-row {
   display: flex;

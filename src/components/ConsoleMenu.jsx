@@ -42,7 +42,7 @@ export default function ConsoleMenu({ prefs, togglePanel, applyPreset, reset }) 
             <div className="cmenu-h"><LayoutGrid size={12} /> Layout presets</div>
             <div className="cmenu-presets">
               {Object.keys(PRESETS).map((name) => (
-                <button key={name} className="cmenu-preset" onClick={() => applyPreset(name)}>{name}</button>
+                <button key={name} className="cmenu-preset" onClick={() => { applyPreset(name); setOpen(false); }}>{name}</button>
               ))}
             </div>
           </div>
