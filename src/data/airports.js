@@ -204,18 +204,63 @@ export const AIRPORTS = {
     ],
     carriers: ['CPA', 'HDA', 'CRK', 'CES', 'CSN', 'CCA', 'SIA', 'ANA', 'KAL', 'UAE', 'QTR', 'BAW'],
   },
-  VCBI: {
-    icao: 'VCBI', tz: 'Asia/Colombo', iata: 'CMB', name: 'Bandaranaike Intl', city: 'Colombo, Sri Lanka',
-    lat: 7.1808, lon: 79.8841, elevFt: 30, decl: -2,
-    freqs: { tower: '118.700', ground: '121.900', approach: '132.400', atis: '127.100' },
+  EHAM: {
+    icao: 'EHAM', tz: 'Europe/Amsterdam', iata: 'AMS', name: 'Amsterdam Schiphol', city: 'Amsterdam, Netherlands',
+    lat: 52.3086, lon: 4.7639, elevFt: -11, decl: 2,
+    freqs: { tower: '119.225', ground: '121.700', approach: '121.200', atis: '122.150' },
     runways: [
-      { id: '04/22', ends: ['04', '22'], trueHdg: 38, lenFt: 10991, ils: ['04', '22'] },
+      { id: '18R/36L', ends: ['18R', '36L'], trueHdg: 183, lenFt: 12467, ils: ['18R', '36L'] }, // Polderbaan
+      { id: '06/24', ends: ['06', '24'], trueHdg: 58, lenFt: 11483, ils: ['06', '24'] },        // Kaagbaan
+      { id: '09/27', ends: ['09', '27'], trueHdg: 87, lenFt: 11329, ils: ['09', '27'] },        // Buitenveldertbaan
+      { id: '18C/36C', ends: ['18C', '36C'], trueHdg: 183, lenFt: 10827, ils: ['18C', '36C'] }, // Zwanenburgbaan
+      { id: '18L/36R', ends: ['18L', '36R'], trueHdg: 183, lenFt: 11155, ils: ['18L', '36R'] }, // Aalsmeerbaan
+      { id: '04/22', ends: ['04', '22'], trueHdg: 41, lenFt: 6608, ils: [] },                    // Oostbaan
     ],
     terminals: [
-      { name: 'T1', gates: ['4', '5', '6', '7', '8', '9', '10', '11', '12'] },
-      { name: 'APR', gates: ['15', '16', '17', '18', '21', '22'] },
+      { name: 'D', gates: ['D2', 'D4', 'D6', 'D8', 'D57', 'D59', 'D61', 'D87'] },
+      { name: 'E', gates: ['E2', 'E4', 'E6', 'E18', 'E22', 'E24'] },
+      { name: 'F', gates: ['F2', 'F4', 'F6', 'F8'] },
+      { name: 'G', gates: ['G2', 'G4', 'G6', 'G9'] },
+      { name: 'H/M', gates: ['H1', 'H3', 'H5', 'M5', 'M7'] },
     ],
-    carriers: ['ALK', 'UAE', 'QTR', 'SIA', 'AIC', 'IGO', 'THY', 'CPA', 'MAS', 'ETD'],
+    carriers: ['KLM', 'TRA', 'DLH', 'BAW', 'AFR', 'UAE', 'DAL', 'EZY', 'VLG', 'CPA', 'SIA', 'ANZ'],
+  },
+  KDFW: {
+    icao: 'KDFW', tz: 'America/Chicago', iata: 'DFW', name: 'Dallas Fort Worth Intl', city: 'Dallas, USA',
+    lat: 32.8998, lon: -97.0403, elevFt: 607, decl: 3,
+    freqs: { tower: '126.550', ground: '121.650', approach: '118.550', atis: '135.925' },
+    runways: [
+      { id: '17C/35C', ends: ['17C', '35C'], trueHdg: 175, lenFt: 13401, ils: ['17C', '35C'] },
+      { id: '17R/35L', ends: ['17R', '35L'], trueHdg: 175, lenFt: 13401, ils: ['17R', '35L'] },
+      { id: '18L/36R', ends: ['18L', '36R'], trueHdg: 175, lenFt: 13400, ils: ['18L', '36R'] },
+      { id: '18R/36L', ends: ['18R', '36L'], trueHdg: 175, lenFt: 13400, ils: ['18R', '36L'] },
+      { id: '13R/31L', ends: ['13R', '31L'], trueHdg: 128, lenFt: 9301, ils: ['13R', '31L'] },
+      { id: '13L/31R', ends: ['13L', '31R'], trueHdg: 128, lenFt: 9000, ils: ['13L', '31R'] },
+    ],
+    terminals: [
+      { name: 'A', gates: ['A8', 'A10', 'A14', 'A16', 'A20', 'A24', 'A28', 'A33'] },
+      { name: 'B', gates: ['B2', 'B6', 'B10', 'B14', 'B22', 'B30', 'B39'] },
+      { name: 'C', gates: ['C2', 'C8', 'C14', 'C20', 'C27', 'C33'] },
+      { name: 'D', gates: ['D6', 'D10', 'D16', 'D22', 'D30', 'D40'] },
+      { name: 'E', gates: ['E4', 'E8', 'E12', 'E18', 'E31'] },
+    ],
+    carriers: ['AAL', 'ENY', 'SKW', 'UAL', 'DAL', 'SWA', 'NKS', 'BAW', 'DLH', 'QFA'],
+  },
+  YSSY: {
+    icao: 'YSSY', tz: 'Australia/Sydney', iata: 'SYD', name: 'Sydney Kingsford Smith', city: 'Sydney, Australia',
+    lat: -33.9461, lon: 151.1772, elevFt: 21, decl: 13,
+    freqs: { tower: '120.500', ground: '121.700', approach: '124.400', atis: '126.250' },
+    runways: [
+      { id: '16R/34L', ends: ['16R', '34L'], trueHdg: 157, lenFt: 12999, ils: ['16R', '34L'] },
+      { id: '16L/34R', ends: ['16L', '34R'], trueHdg: 157, lenFt: 7999, ils: ['16L', '34R'] },
+      { id: '07/25', ends: ['07', '25'], trueHdg: 67, lenFt: 8300, ils: ['07', '25'] },
+    ],
+    terminals: [
+      { name: 'T1', gates: ['8', '9', '10', '24', '30', '37', '50', '55', '59', '63'] },
+      { name: 'T2', gates: ['1', '3', '5', '7', '9', '11', '13'] },
+      { name: 'T3', gates: ['1', '2', '3', '4', '5', '14', '19', '22'] },
+    ],
+    carriers: ['QFA', 'JST', 'VOZ', 'UAE', 'SIA', 'ANZ', 'CPA', 'QTR', 'ANA', 'AAL'],
   },
   OMDB: {
     icao: 'OMDB', tz: 'Asia/Dubai', iata: 'DXB', name: 'Dubai Intl', city: 'Dubai, UAE',
@@ -249,7 +294,7 @@ export const AIRLINES = {
   CFG: 'Condor', THY: 'Turkish', EZY: 'Easy', RYR: 'Ryanair', SKY: 'Skymark', SFJ: 'Starflyer',
   HDA: 'Dragon', CRK: 'Bauhinia', CES: 'China Eastern', CSN: 'China Southern', CCA: 'Air China',
   FDB: 'Sky Dubai', ETD: 'Etihad', AIC: 'Air India', PIA: 'Pakistan', IBE: 'Iberia',
-  ALK: 'SriLankan', IGO: 'IFly', MAS: 'Malaysian',
+  TRA: 'Transavia', VLG: 'Vueling', JST: 'Jetstar', VOZ: 'Velocity', ANZ: 'New Zealand',
 };
 
 export function airlineName(callsign) {
