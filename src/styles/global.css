@@ -331,6 +331,67 @@ body {
 .rc-group button.on { background: rgba(61, 220, 151, 0.14); color: var(--green); }
 .rc-group button:hover:not(.on) { color: var(--text); }
 
+.radar-search { position: absolute; top: 10px; left: 10px; z-index: 6; }
+
+.rs-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: rgba(7, 12, 17, 0.88);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.rs-btn:hover { color: var(--green); border-color: var(--green-dim); }
+
+.rs-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 234px;
+  background: rgba(7, 12, 17, 0.96);
+  border: 1px solid var(--line-bright);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.rs-input {
+  width: 100%;
+  padding: 8px 10px 8px 32px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+}
+
+.rs-results { max-height: 232px; overflow-y: auto; }
+.rs-empty { padding: 9px 11px; color: var(--muted); font-size: 10.5px; }
+
+.rs-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 11px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba(20, 34, 48, 0.5);
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.rs-row:hover { background: rgba(61, 220, 151, 0.08); }
+.rs-cs { color: var(--text); font-size: 12px; font-weight: 600; letter-spacing: 0.03em; }
+.rs-meta { font-size: 9.5px; color: var(--cyan); }
+.rs-dist { margin-left: auto; font-size: 9.5px; color: var(--muted); }
+
 .radar-legend {
   position: absolute;
   left: 10px;

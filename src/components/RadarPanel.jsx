@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Radar } from 'lucide-react';
 import RadarScope from './RadarScope.jsx';
 import Radar3D from './Radar3D.jsx';
+import SearchBox from './SearchBox.jsx';
 import { makeVisible, presentAirlines } from '../lib/filters.js';
 
 // Legend rows double as category filter toggles. `key` maps to prefs.filters.
@@ -46,6 +47,7 @@ export default function RadarPanel(props) {
         {scope === '3D'
           ? <Radar3D {...viewProps} onUnavailable={() => setScope('2D')} />
           : <RadarScope {...viewProps} />}
+        <SearchBox aircraft={aircraft} onSelect={props.onSelect} />
         <div className="radar-controls">
           <div className="rc-group">
             {['3D', '2D'].map((v) => (
