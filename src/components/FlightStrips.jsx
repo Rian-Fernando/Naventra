@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PlaneLanding, PlaneTakeoff, CircleDot } from 'lucide-react';
 import { fmtAlt } from '../lib/geo.js';
+import { getRoute } from '../lib/route.js';
 
 const TABS = [
   { key: 'ARR', label: 'Arrivals', icon: PlaneLanding, phases: ['ARRIVAL', 'APPROACH', 'FINAL'] },
@@ -8,7 +9,9 @@ const TABS = [
   { key: 'GND', label: 'Ground', icon: CircleDot, phases: ['GROUND'] },
 ];
 
-export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect, airline }) {
+const epMatches = (ep, ap) => !!ep && !!ap && (ep.icao === ap.icao || ep.iata === ap.iata);
+
+export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect, airline, airport }) {
   const [tab, setTab] = useState('ARR');
   const active = TABS.find((t) => t.key === tab);
   const conflictIds = new Set(conflicts.flatMap((c) => [c.a.id, c.b.id]));
@@ -41,7 +44,14 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
             No {active.label.toLowerCase()} in the sector.<br />Strips populate as traffic enters the {tab === 'ARR' ? 'arrival flow' : tab === 'DEP' ? 'departure corridor' : 'movement area'}.
           </div>
         )}
-        {rows.map((a) => (
+        {rows.map((a) => {
+          const rt = getRoute(a.callsign);
+          // Only trust the scheduled route when the endpoint at THIS field matches
+          // (callsigns get reused): arrivals show origin, departures show dest.
+          const endpoint = rt && (tab === 'DEP'
+            ? (epMatches(rt.from, airport) ? rt.to : null)
+            : (epMatches(rt.to, airport) ? rt.from : null));
+          return (
           <div
             key={a.id}
             className={`strip ${a.id === selectedId ? 'sel' : ''} ${conflictIds.has(a.id) ? 'conflict' : ''}`}
@@ -65,11 +75,14 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
             <div className="strip-bot">
               {a.runway && <span className="rwy">RWY {a.runway}</span>}
               {a.gate && <span className="gate">STAND {a.gate}</span>}
-              {a.squawk && <span>SQ {a.squawk}</span>}
-              {a.operator && <span>{a.operator.slice(0, 22)}</span>}
+              {endpoint && (
+                <span className="route">{tab === 'DEP' ? '→' : '←'} {endpoint.iata || endpoint.city}</span>
+              )}
+              {!endpoint && a.squawk && <span>SQ {a.squawk}</span>}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

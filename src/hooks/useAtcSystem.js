@@ -7,6 +7,7 @@ import { allocateRunways, annotateAircraft, detectConflicts, generateEvents, com
 import { PredictionTracker } from '../engine/predictions.js';
 import { runwayPrior } from '../engine/learning.js';
 import { trackerConfigured, TRACKED_HUBS, fetchGlobalScorecard, fetchGlobalModels, priorFnFromModels } from '../lib/globalModel.js';
+import { prefetchRoutes } from '../lib/route.js';
 
 const RADIUS_NM = 50;
 const LIVE_POLL_MS = 6000;
@@ -96,6 +97,13 @@ export function useAtcSystem() {
 
     r.prevAnnotated = annotated;
     r.prevConflictIds = new Set(confl.map((c) => c.id));
+    // Prefetch routes for committed inbound + outbound so strips + detail card
+    // can show origin/destination (throttled + cached inside route.js).
+    prefetchRoutes(
+      annotated
+        .filter((x) => ['ARRIVAL', 'APPROACH', 'FINAL', 'DEPARTURE'].includes(x.phase))
+        .map((x) => x.callsign)
+    );
     setAircraft(annotated);
     setConflicts(confl);
     pushEvents(evD, evC);

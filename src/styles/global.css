@@ -562,6 +562,7 @@ body {
 .strip-bot { display: flex; gap: 10px; margin-top: 2px; font-size: 9.5px; color: var(--muted); }
 .strip-bot .gate { color: var(--violet); }
 .strip-bot .rwy { color: var(--green); }
+.strip-bot .route { color: var(--cyan); }
 
 .phase-chip {
   font-size: 8.5px;
@@ -794,6 +795,23 @@ body {
 .sel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; font-size: 10px; }
 .sel-grid .k { color: var(--muted); }
 .sel-grid .v { color: var(--text); text-align: right; }
+
+.sel-route {
+  margin: 4px 0 8px;
+  padding: 7px 9px;
+  background: rgba(76, 201, 240, 0.06);
+  border: 1px solid var(--cyan-dim);
+  border-radius: 5px;
+}
+.sel-route-line { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text); }
+.sel-route-line .ap { display: flex; align-items: center; gap: 4px; }
+.sel-route-line .ap svg { color: var(--cyan); }
+.sel-route-line .arrow { color: var(--cyan); }
+.sel-route-names { font-size: 9.5px; color: var(--text-dim); margin-top: 3px; }
+.sel-route-none {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--muted); font-size: 9.5px; background: none; border-color: var(--line);
+}
 
 /* ---------------------------------------------------------- scorecard --- */
 

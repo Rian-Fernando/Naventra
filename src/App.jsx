@@ -119,7 +119,7 @@ export default function App() {
                 {panels.strips && (
                   <FlightStrips
                     aircraft={atc.aircraft} conflicts={atc.conflicts} airline={view.prefs.airline}
-                    selectedId={atc.selectedId} onSelect={atc.setSelectedId}
+                    airport={atc.airport} selectedId={atc.selectedId} onSelect={atc.setSelectedId}
                   />
                 )}
                 {panels.runways && <RunwayPanel runways={atc.runways} />}
@@ -133,7 +133,7 @@ export default function App() {
                   runways={atc.runways} selectedId={atc.selectedId} onSelect={atc.setSelectedId}
                   mode={atc.mode} view={view}
                 />
-                <AircraftDetail aircraft={atc.selected} onClose={() => atc.setSelectedId(null)} />
+                <AircraftDetail aircraft={atc.selected} airport={atc.airport} onClose={() => atc.setSelectedId(null)} />
               </div>
             )}
 
