@@ -30,7 +30,7 @@ export default function ScorecardPanel({ scorecard, mode, scope = 'session', glo
   const sc = scorecard;
   const all = sc?.allTime;
   const global = scope === 'global';
-  const processed = globalTotals?.learned || 0;
+  const processed = (globalTotals?.learned || 0) + (globalTotals?.depOps || 0);
 
   return (
     <div className="panel score-panel">
@@ -46,7 +46,7 @@ export default function ScorecardPanel({ scorecard, mode, scope = 'session', glo
         <div className="learn-strip" title="The always-on tracker runs 24/7, learning from every real landing it grades across JFK, LAX and LHR — and logging each as a labeled training row.">
           <span className="ls-dot" />
           <span>
-            <b>{processed.toLocaleString()}</b> real landing{processed === 1 ? '' : 's'} processed
+            <b>{processed.toLocaleString()}</b> real operation{processed === 1 ? '' : 's'} graded
             {globalTotals.samples > 0 && <> · <b>{globalTotals.samples.toLocaleString()}</b> training rows</>}
           </span>
           <span className="ls-tag">SELF-LEARNING · 24/7</span>
@@ -91,7 +91,7 @@ export default function ScorecardPanel({ scorecard, mode, scope = 'session', glo
               <span className="sr-grades">
                 {e.items.map((i) => (
                   <span key={i.cat} className={i.ok ? 'ok' : 'miss'} title={`${i.cat}: predicted ${i.predicted} → ${i.actual}`}>
-                    {i.ok ? '✓' : '✗'}{i.cat === 'runway' ? 'RWY' : i.cat === 'config' ? 'CFG' : i.cat === 'eta' ? 'ETA' : 'SEQ'}
+                    {i.ok ? '✓' : '✗'}{i.cat === 'runway' ? 'RWY' : i.cat === 'config' ? 'CFG' : i.cat === 'eta' ? 'ETA' : i.cat === 'deprwy' ? 'DEP' : 'SEQ'}
                   </span>
                 ))}
               </span>

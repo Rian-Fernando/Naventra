@@ -36,17 +36,44 @@ function saveStore(store) {
 export class PredictionTracker {
   constructor(airport) {
     this.airport = airport;
-    this.open = new Map();   // aircraft id → locked prediction
-    this.store = loadStore(); // persisted all-time (live only)
+    this.open = new Map();     // aircraft id → locked arrival prediction
+    this.openDep = new Map();  // aircraft id → locked departure prediction
+    this.store = loadStore();  // persisted all-time (live only)
     this.session = emptyStats();
     this.events = [];
   }
 
-  update(aircraft, runways, live, lockEnabled = true) {
+  update(aircraft, runways, live, lockEnabled = true, departureEndFn = null) {
     const now = Date.now();
     this.events = [];
     const arrEnds = runways.filter((r) => r.role.includes('ARR')).map((r) => r.activeEnd);
     const seen = new Map(aircraft.map((a) => [a.id, a]));
+
+    // ---- departures: lock while taxiing/rolling, grade on climb-out --------
+    if (departureEndFn) {
+      for (const ac of aircraft) {
+        const d = this.openDep.get(ac.id);
+        if (!d) {
+          // Lock the planned departure runway while the flight is still on the
+          // ground (moving — parked stands churn too much noise).
+          if (lockEnabled && ac.phase === 'GROUND' && ac.runway && ac.gs > 5 && ac.gs < 60 && !this.open.has(ac.id)) {
+            this.openDep.set(ac.id, { callsign: ac.callsign, predRunway: ac.runway, lockTs: now, lastSeen: now, live });
+          }
+          continue;
+        }
+        d.lastSeen = now;
+        const actual = departureEndFn(ac, this.airport);
+        if (actual) {
+          this.openDep.delete(ac.id);
+          this.gradeDeparture(d, actual, runways);
+        } else if (ac.phase === 'GROUND' && ac.gs < 3 && now - d.lockTs > 10 * 60000) {
+          this.openDep.delete(ac.id); // never departed (returned to stand)
+        }
+      }
+      for (const [id, d] of this.openDep) {
+        if (!seen.has(id) && now - d.lastSeen > 5 * 60000) this.openDep.delete(id);
+      }
+    }
 
     for (const ac of aircraft) {
       const o = this.open.get(ac.id);
@@ -110,6 +137,38 @@ export class PredictionTracker {
     return this.events;
   }
 
+  // A departure climbed out — grade the planned runway vs the one it used.
+  gradeDeparture(d, actualEnd, runways) {
+    const items = [{
+      cat: 'deprwy', predicted: d.predRunway, actual: actualEnd, ok: actualEnd === d.predRunway,
+    }];
+    const entry = { ts: Date.now(), callsign: d.callsign, airport: this.airport.iata, live: d.live, items, kind: 'departure' };
+    this.bank(items, d.live, entry);
+    this.events.push({
+      kind: 'verify', callsign: d.callsign, entry, ok: items[0].ok,
+      text: `${d.callsign} departed ${actualEnd} — runway prediction ${items[0].ok ? 'verified' : `missed (planned ${d.predRunway})`}.`,
+    });
+  }
+
+  // Shared stats banking for arrivals + departures.
+  bank(items, live, entry) {
+    for (const it of items) {
+      this.session.n++;
+      this.session.correct += it.ok ? 1 : 0;
+      this.session.byCat[it.cat].n++;
+      this.session.byCat[it.cat].correct += it.ok ? 1 : 0;
+      if (live) {
+        this.store.stats.n++;
+        this.store.stats.correct += it.ok ? 1 : 0;
+        this.store.stats.byCat[it.cat] = this.store.stats.byCat[it.cat] || { n: 0, correct: 0 };
+        this.store.stats.byCat[it.cat].n++;
+        this.store.stats.byCat[it.cat].correct += it.ok ? 1 : 0;
+      }
+    }
+    this.store.recent = [entry, ...this.store.recent].slice(0, 36);
+    if (live) saveStore(this.store);
+  }
+
   grade(id, landedTs, arrEndsNow) {
     const o = this.open.get(id);
     this.open.delete(id);
@@ -131,20 +190,7 @@ export class PredictionTracker {
 
     const entry = { ts: landedTs, callsign: o.callsign, airport: this.airport.iata, live: o.live, items };
 
-    for (const it of items) {
-      this.session.n++;
-      this.session.correct += it.ok ? 1 : 0;
-      this.session.byCat[it.cat].n++;
-      this.session.byCat[it.cat].correct += it.ok ? 1 : 0;
-      if (o.live) {
-        this.store.stats.n++;
-        this.store.stats.correct += it.ok ? 1 : 0;
-        this.store.stats.byCat[it.cat].n++;
-        this.store.stats.byCat[it.cat].correct += it.ok ? 1 : 0;
-      }
-    }
-    this.store.recent = [entry, ...this.store.recent].slice(0, 36);
-    if (o.live) saveStore(this.store);
+    this.bank(items, o.live, entry);
 
     const hits = items.filter((i) => i.ok).length;
     this.events.push({
@@ -161,14 +207,13 @@ export class PredictionTracker {
       allTime: {
         n: this.store.stats.n,
         pct: pct(this.store.stats),
-        byCat: Object.fromEntries(CATEGORIES.map(([c, label]) => [c, {
-          label,
-          n: this.store.stats.byCat[c].n,
-          pct: pct(this.store.stats.byCat[c]),
-        }])),
+        byCat: Object.fromEntries(CATEGORIES.map(([c, label]) => {
+          const b = this.store.stats.byCat[c] || { n: 0, correct: 0 };
+          return [c, { label, n: b.n, pct: pct(b) }];
+        })),
       },
       session: { n: this.session.n, pct: pct(this.session) },
-      openCount: this.open.size,
+      openCount: this.open.size + this.openDep.size,
       learned: learnedLandings(this.airport.icao),
       recent: this.store.recent,
     };

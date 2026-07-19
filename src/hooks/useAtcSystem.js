@@ -3,7 +3,7 @@ import { AIRPORTS } from '../data/airports.js';
 import { fetchLiveTraffic } from '../lib/adsb.js';
 import { fetchMetar } from '../lib/weather.js';
 import { SimEngine } from '../lib/sim.js';
-import { allocateRunways, annotateAircraft, detectConflicts, generateEvents, computeKpis, inferActiveArrivals } from '../engine/atc.js';
+import { allocateRunways, annotateAircraft, detectConflicts, generateEvents, computeKpis, inferActiveArrivals, departureEnd } from '../engine/atc.js';
 import { PredictionTracker } from '../engine/predictions.js';
 import { runwayPrior } from '../engine/learning.js';
 import { trackerConfigured, TRACKED_HUBS, fetchGlobalScorecard, fetchGlobalModels, priorFnFromModels } from '../lib/globalModel.js';
@@ -56,6 +56,7 @@ export function useAtcSystem() {
     rwySignature: '',
     generation: 0,
     globalPrior: null,
+    opsLog: [],
   });
 
   const pushEvents = useCallback((evDecisions, evComms) => {
@@ -92,7 +93,7 @@ export function useAtcSystem() {
     // Lock predictions / grade landings against observed ground truth.
     // Locks wait for live weather so the graded plan is the wind-driven one.
     if (!r.tracker) r.tracker = new PredictionTracker(ap);
-    const verifyEvents = r.tracker.update(annotated, rwys, isLive, !!r.weather);
+    const verifyEvents = r.tracker.update(annotated, rwys, isLive, !!r.weather, departureEnd);
     for (const ev of verifyEvents) {
       evD.unshift({
         id: `vf${ev.callsign}${Date.now()}`, ts: Date.now(),
@@ -106,6 +107,24 @@ export function useAtcSystem() {
       });
     }
     setScorecard(r.tracker.getState());
+
+    // Movements ledger: landings (final/approach -> ground) and takeoffs
+    // (ground -> departure), kept 2h for the Tower Ops rates panel.
+    {
+      const prev = new Map(r.prevAnnotated.map((a) => [a.id, a]));
+      const now2 = Date.now();
+      for (const a of annotated) {
+        const was = prev.get(a.id);
+        if (!was) continue;
+        if ((was.phase === 'FINAL' || was.phase === 'APPROACH') && a.phase === 'GROUND') {
+          r.opsLog.push({ ts: now2, type: 'arr', runway: was.runway || a.runway || null });
+        } else if (was.phase === 'GROUND' && a.phase === 'DEPARTURE') {
+          r.opsLog.push({ ts: now2, type: 'dep', runway: departureEnd(a, ap) || was.runway || null });
+        }
+      }
+      const cutoff = now2 - 2 * 3600 * 1000;
+      if (r.opsLog.length && r.opsLog[0].ts < cutoff) r.opsLog = r.opsLog.filter((e) => e.ts >= cutoff);
+    }
 
     r.prevAnnotated = annotated;
     r.prevConflictIds = new Set(confl.map((c) => c.id));
@@ -134,6 +153,7 @@ export function useAtcSystem() {
     r.runways = [];
     r.rwySignature = '';
     r.observedConfig = null;
+    r.opsLog = [];
     setAircraft([]);
     setConflicts([]);
     setDecisions([]);
@@ -159,7 +179,7 @@ export function useAtcSystem() {
         if (!stop && sc) setGlobalScorecard(sc);
       }
       const agg = await fetchGlobalScorecard(null); // fleet-wide totals
-      if (!stop && agg) setGlobalTotals({ learned: agg.learned, n: agg.allTime.n, pct: agg.allTime.pct, samples: agg.samples });
+      if (!stop && agg) setGlobalTotals({ learned: agg.learned, n: agg.allTime.n, pct: agg.allTime.pct, samples: agg.samples, depOps: agg.allTime.byCat?.deprwy?.n || 0 });
     }
     async function pollModels() {
       const payload = await fetchGlobalModels();
@@ -259,6 +279,19 @@ export function useAtcSystem() {
   }, [icao, airport, forceSim, runEngine, pushEvents]);
 
   const kpis = useMemo(() => computeKpis(aircraft, conflicts), [aircraft, conflicts]);
+
+  // Tower-ops rates from the movements ledger (trailing 60 min).
+  const opsStats = useMemo(() => {
+    const log = ref.current.opsLog;
+    const hourAgo = Date.now() - 3600 * 1000;
+    const lastHr = log.filter((e) => e.ts >= hourAgo);
+    const arr = lastHr.filter((e) => e.type === 'arr').length;
+    const dep = lastHr.filter((e) => e.type === 'dep').length;
+    const byRwy = {};
+    for (const e of lastHr) if (e.runway) byRwy[e.runway] = (byRwy[e.runway] || 0) + 1;
+    const busiest = Object.entries(byRwy).sort((a, b) => b[1] - a[1])[0] || null;
+    return { arrHr: arr, depHr: dep, movHr: arr + dep, busiest: busiest ? { runway: busiest[0], n: busiest[1] } : null, tracking: log.length };
+  }, [aircraft]);
   const selected = useMemo(() => aircraft.find((a) => a.id === selectedId) || null, [aircraft, selectedId]);
 
   // Show the global 24/7 scorecard for tracked hubs; fall back to the local
@@ -270,7 +303,7 @@ export function useAtcSystem() {
   return {
     airport, icao, setIcao,
     mode, source, forceSim, setForceSim,
-    weather, aircraft, runways, conflicts, decisions, comms, kpis,
+    weather, aircraft, runways, conflicts, decisions, comms, kpis, opsStats,
     scorecard: shownScorecard, scoreScope, globalTotals,
     selected, selectedId, setSelectedId,
   };

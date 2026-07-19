@@ -3,7 +3,7 @@
 // engine + grading code with the browser (../../src/engine/*).
 
 import { AIRPORTS } from '../../src/data/airports.js';
-import { allocateRunways, annotateAircraft, inferActiveArrivals } from '../../src/engine/atc.js';
+import { allocateRunways, annotateAircraft, inferActiveArrivals, departureEnd } from '../../src/engine/atc.js';
 import { octantOf } from '../../src/engine/octant.js';
 import { classifyLandingRunway, gradeItems } from '../../src/engine/grading.js';
 import {
@@ -62,6 +62,12 @@ export async function tickAirport(env, icao) {
     loadConfig(env.DB, icao),
   ]);
 
+  // Departure predictions share the predictions table with 'dep:'-prefixed ids.
+  const openDep = new Map();
+  for (const [id, o] of [...open]) {
+    if (id.startsWith('dep:')) { openDep.set(id, o); open.delete(id); }
+  }
+
   const priorFn = priorFromModel(model);
   const live = tracks.filter((t) => t.altFt == null || t.altFt < 60000);
   // Two passes: wind base config, then re-allocate to the configuration read
@@ -87,6 +93,38 @@ export async function tickAirport(env, icao) {
   const inboundCount = annotated.filter((a) => a.phase === 'ARRIVAL' || a.phase === 'APPROACH' || a.phase === 'FINAL').length;
   const sectorCount = annotated.length;
   const byId = new Map(annotated.map((a) => [a.id, a]));
+
+  // ---- departures: lock while taxiing, grade on climb-out -----------------
+  const depGrades = [];              // graded departures (entries)
+  const depUpserts = new Map();
+  const depDeletes = new Set();
+  for (const ac of annotated) {
+    const did = 'dep:' + ac.id;
+    const d = openDep.get(did);
+    if (!d) {
+      if (wx && ac.phase === 'GROUND' && ac.runway && ac.gs > 5 && ac.gs < 60 && !open.has(ac.id)) {
+        const rec = { id: did, callsign: ac.callsign, lockTs: now, lockOct: 0, predRunway: ac.runway, rawEtaTs: now, predEtaTs: now, lastSeen: now, sample: null, features: null };
+        openDep.set(did, rec);
+        depUpserts.set(did, rec);
+      }
+      continue;
+    }
+    d.lastSeen = now;
+    const actual = departureEnd(ac, airport);
+    if (actual) {
+      depDeletes.add(did);
+      depGrades.push({ icao, iata: airport.iata, ts: now, callsign: d.callsign,
+        items: [{ cat: 'deprwy', predicted: d.predRunway, actual, ok: actual === d.predRunway }] });
+    } else if (ac.phase === 'GROUND' && ac.gs < 3 && now - d.lockTs > 10 * 60000) {
+      depDeletes.add(did); // returned to stand, never departed
+    } else {
+      depUpserts.set(did, d);
+    }
+  }
+  for (const [did, d] of openDep) {
+    if (!byId.has(did.slice(4)) && now - d.lastSeen > 6 * 60000) depDeletes.add(did);
+  }
+
   // Accumulate writes so the batch never contains duplicate primary keys:
   const landingEntries = [];             // one INSERT each
   const samples = [];                    // labeled training rows
@@ -186,13 +224,23 @@ export async function tickAirport(env, icao) {
     }
   }
 
+  for (const g of depGrades) {
+    landingEntries.push(g);
+    const dd = statDelta.get('deprwy') || { n: 0, correct: 0 };
+    dd.n += 1; dd.correct += g.items[0].ok ? 1 : 0;
+    statDelta.set('deprwy', dd);
+    graded++;
+  }
+
   // Build the batch with no duplicate primary keys.
   const stmts = [];
   for (const entry of landingEntries) stmts.push(recordLandingStmt(env.DB, entry));
   for (const s of samples) stmts.push(recordSampleStmt(env.DB, s));
   for (const [cat, d] of statDelta) stmts.push(bumpStatsStmt(env.DB, icao, cat, d.n, d.correct));
   for (const id of openDeletes) { openUpserts.delete(id); stmts.push(deleteOpenStmt(env.DB, id)); }
+  for (const id of depDeletes) { depUpserts.delete(id); stmts.push(deleteOpenStmt(env.DB, id)); }
   for (const rec of openUpserts.values()) stmts.push(upsertOpenStmt(env.DB, icao, rec));
+  for (const rec of depUpserts.values()) stmts.push(upsertOpenStmt(env.DB, icao, rec));
   stmts.push(saveModelStmt(env.DB, model));
   if (cfgToSave) stmts.push(saveConfigStmt(env.DB, icao, cfgToSave));
 

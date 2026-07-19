@@ -5,10 +5,11 @@ import { toLocalNm, angleDiff } from '../lib/geo.js';
 import { stripOffsets } from './atc.js';
 
 export const CATEGORIES = [
-  ['runway', 'Runway end'],
+  ['runway', 'Arrival runway'],
   ['config', 'Active config'],
   ['eta', 'Touchdown ETA'],
   ['sequence', 'Landing order'],
+  ['deprwy', 'Departure runway'],
 ];
 
 export const ETA_TOLERANCE_MS = 150 * 1000; // ±2.5 min counts as a hit

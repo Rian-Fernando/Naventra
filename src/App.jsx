@@ -8,6 +8,7 @@ import FlightStrips from './components/FlightStrips.jsx';
 import AIDecisionFeed from './components/AIDecisionFeed.jsx';
 import ConflictPanel from './components/ConflictPanel.jsx';
 import RunwayPanel from './components/RunwayPanel.jsx';
+import OpsStatsPanel from './components/OpsStatsPanel.jsx';
 import WeatherPanel from './components/WeatherPanel.jsx';
 import CommsLog from './components/CommsLog.jsx';
 import AircraftDetail from './components/AircraftDetail.jsx';
@@ -78,7 +79,7 @@ export default function App() {
   }, [onGuide, atc, view]);
 
   const { panels } = view.prefs;
-  const leftV = panels.strips || panels.runways;
+  const leftV = panels.strips || panels.runways || panels.ops;
   const centerV = panels.radar;
   const rightV = panels.scorecard || panels.separation || panels.feed || panels.weather;
   const nCols = [leftV, centerV, rightV].filter(Boolean).length;
@@ -123,6 +124,7 @@ export default function App() {
                   />
                 )}
                 {panels.runways && <RunwayPanel runways={atc.runways} />}
+                {panels.ops && <OpsStatsPanel opsStats={atc.opsStats} kpis={atc.kpis} />}
               </div>
             )}
 

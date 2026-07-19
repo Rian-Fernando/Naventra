@@ -8,6 +8,7 @@ const KEY = 'nv-viewprefs-v1';
 export const PANELS = [
   ['strips', 'Flight Strips'],
   ['runways', 'Runway Allocation'],
+  ['ops', 'Tower Ops'],
   ['radar', 'Radar / TRACON'],
   ['scorecard', 'AI Scorecard'],
   ['separation', 'Separation Monitor'],
@@ -28,9 +29,9 @@ const DEFAULT = {
 // Quick layout presets for the menu.
 export const PRESETS = {
   'Full console': { ...ALL_ON },
-  'Radar only': { strips: false, runways: false, radar: true, scorecard: false, separation: false, feed: false, weather: false, comms: false },
-  'Tower ops': { strips: true, runways: true, radar: true, scorecard: false, separation: true, feed: false, weather: true, comms: true },
-  'AI analytics': { strips: false, runways: false, radar: true, scorecard: true, separation: true, feed: true, weather: false, comms: false },
+  'Radar only': { strips: false, runways: false, ops: false, radar: true, scorecard: false, separation: false, feed: false, weather: false, comms: false },
+  'Tower ops': { strips: true, runways: true, ops: true, radar: true, scorecard: false, separation: true, feed: false, weather: true, comms: true },
+  'AI analytics': { strips: false, runways: false, ops: true, radar: true, scorecard: true, separation: true, feed: true, weather: false, comms: false },
 };
 
 function load() {
