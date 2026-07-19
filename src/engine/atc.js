@@ -59,8 +59,9 @@ export function stripOffsets(airport) {
 }
 
 // Which runway END is an aircraft physically lined up with? Offset-aware, both
-// directions. Used to read the ACTIVE configuration off real traffic.
-export function alignedEnd(ac, airport) {
+// directions. `maxAlong` bounds how far past the field to accept (small for
+// arrivals on final; larger for departures already climbing out).
+export function alignedEnd(ac, airport, maxAlong = 1.0, maxCross = 1.4) {
   const p = toLocalNm(airport.lat, airport.lon, ac.lat, ac.lon);
   const offsets = stripOffsets(airport);
   let best = null, bestScore = Infinity;
@@ -74,12 +75,20 @@ export function alignedEnd(ac, airport) {
       const dirX = Math.sin(hdg * Math.PI / 180), dirY = Math.cos(hdg * Math.PI / 180);
       const cross = Math.abs(px * dirY - py * dirX);
       const along = px * dirX + py * dirY;
-      if (cross > 1.4 || along > 1.0) continue;
+      if (cross > maxCross || along > maxAlong) continue;
       const score = align * 0.05 + cross;
       if (score < bestScore) { bestScore = score; best = rwy.ends[e]; }
     }
   }
   return best;
+}
+
+// The runway an aircraft is DEPARTING from: low, climbing, aligned, already
+// climbing out along/past the runway (so a wider along window than arrivals).
+export function departureEnd(ac, airport) {
+  if (ac.onGround || ac.agl == null || ac.agl < 100 || ac.agl > 2500) return null;
+  if (ac.vs < 500 || ac.gs < 90 || ac.distNm > 6) return null;
+  return alignedEnd(ac, airport, 5.0, 1.2);
 }
 
 // Read the ACTIVE arrival runways from traffic on final approach — what a
@@ -131,23 +140,31 @@ export function allocateRunways(airport, wx, observed = null) {
 
   const arrSet = observed && observed.size ? new Set(observed.keys()) : null;
   if (arrSet) {
-    // Real configuration observed from traffic: point each runway at the end
-    // actually in use, mark observed ends as arrivals, the rest as departures.
+    const setEnd = (s, end) => {
+      const endIdx = s.ends.indexOf(end);
+      s.activeEnd = end;
+      s.activeHdg = (s.trueHdg + (endIdx === 1 ? 180 : 0)) % 360;
+      const comps = windDir != null ? windComponents(s.activeHdg, windDir, windKt) : { head: 0, cross: 0 };
+      s.head = comps.head; s.cross = comps.cross;
+      s.hasIls = s.ils.includes(end);
+      s.status = s.cross > 28 ? 'X-WIND' : 'ACTIVE';
+    };
+    // Point observed runways at the arrival end actually in use.
     for (const s of strips) {
       const obsEnd = s.ends.find((e) => arrSet.has(e));
-      if (obsEnd) {
-        const endIdx = s.ends.indexOf(obsEnd);
-        s.activeEnd = obsEnd;
-        s.activeHdg = (s.trueHdg + (endIdx === 1 ? 180 : 0)) % 360;
-        const comps = windDir != null ? windComponents(s.activeHdg, windDir, windKt) : { head: 0, cross: 0 };
-        s.head = comps.head; s.cross = comps.cross;
-        s.hasIls = s.ils.includes(obsEnd);
-        s.role = 'ARR';
-        s.observed = true;
-      } else {
-        s.role = 'DEP';
-      }
-      s.status = s.cross > 28 ? 'X-WIND' : 'ACTIVE';
+      if (obsEnd) { setEnd(s, obsEnd); s.role = 'ARR'; s.observed = true; }
+    }
+    // Mean flow heading of the observed arrivals — departures run the same way.
+    const arr = strips.filter((s) => s.observed);
+    let vx = 0, vy = 0;
+    for (const s of arr) { vx += Math.cos(s.activeHdg * Math.PI / 180); vy += Math.sin(s.activeHdg * Math.PI / 180); }
+    const flowHdg = (Math.atan2(vy, vx) / (Math.PI / 180) + 360) % 360;
+    for (const s of strips) {
+      if (s.observed) continue;
+      // orient a departure runway to whichever end matches the observed flow
+      const h0 = s.trueHdg, h1 = (s.trueHdg + 180) % 360;
+      setEnd(s, angleDiff(h0, flowHdg) <= angleDiff(h1, flowHdg) ? s.ends[0] : s.ends[1]);
+      s.role = 'DEP';
     }
     if (!strips.some((s) => s.role.includes('DEP'))) {
       strips.sort((a, b) => b.lenFt - a.lenFt)[0].role = 'DEP+ARR'; // ensure a departure runway
