@@ -9,3 +9,4 @@ worker/.wrangler/
 .env
 .vercel
 .env*
+scripts/.oa/

@@ -29,17 +29,22 @@ export function radioName(callsign) {
 
 // ---------------------------------------------------------------- runways ---
 
-// Lateral geometry for parallel runway groups. The spec DB stores headings and
-// lengths only, so parallels are spread perpendicular to their axis at a
-// realistic ~0.55nm pitch. Every consumer (radar views, simulation, runway
-// scoring, landing classification) shares these offsets so parallels are
-// distinguishable — and render as actual parallel lines.
+// Each runway's exact lateral offset (nm east/north from the field reference),
+// derived from real OurAirports thresholds (see scripts/gen-airports.mjs). This
+// is what lets every consumer (radar, sim, runway scoring, landing/departure
+// classification) tell close parallels apart. Falls back to a synthetic 0.55nm
+// pitch only if a runway is missing exact geometry.
 const offsetCache = new Map();
 
 export function stripOffsets(airport) {
   let m = offsetCache.get(airport.icao);
   if (m) return m;
   m = new Map();
+  if (airport.runways.every((r) => typeof r.offX === 'number')) {
+    for (const rwy of airport.runways) m.set(rwy.id, { offX: rwy.offX, offY: rwy.offY });
+    offsetCache.set(airport.icao, m);
+    return m;
+  }
   const groups = [];
   for (const rwy of airport.runways) {
     const g = groups.find((grp) => angleDiff(grp[0].trueHdg, rwy.trueHdg) < 20);
