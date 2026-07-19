@@ -58,7 +58,47 @@ export function stripOffsets(airport) {
   return m;
 }
 
-export function allocateRunways(airport, wx) {
+// Which runway END is an aircraft physically lined up with? Offset-aware, both
+// directions. Used to read the ACTIVE configuration off real traffic.
+export function alignedEnd(ac, airport) {
+  const p = toLocalNm(airport.lat, airport.lon, ac.lat, ac.lon);
+  const offsets = stripOffsets(airport);
+  let best = null, bestScore = Infinity;
+  for (const rwy of airport.runways) {
+    const off = offsets.get(rwy.id) || { offX: 0, offY: 0 };
+    const px = p.x - off.offX, py = p.y - off.offY;
+    for (let e = 0; e < 2; e++) {
+      const hdg = (rwy.trueHdg + e * 180) % 360;
+      const align = angleDiff(ac.track, hdg);
+      if (align > 35) continue;
+      const dirX = Math.sin(hdg * Math.PI / 180), dirY = Math.cos(hdg * Math.PI / 180);
+      const cross = Math.abs(px * dirY - py * dirX);
+      const along = px * dirX + py * dirY;
+      if (cross > 1.4 || along > 1.0) continue;
+      const score = align * 0.05 + cross;
+      if (score < bestScore) { bestScore = score; best = rwy.ends[e]; }
+    }
+  }
+  return best;
+}
+
+// Read the ACTIVE arrival runways from traffic that's already on final/short
+// approach — this is what a controller sees, and it beats a wind guess because
+// real flows follow procedure and inertia, not just the wind vector.
+export function inferActiveArrivals(annotated, airport) {
+  const ends = new Map();
+  for (const a of annotated) {
+    const onFinal = a.phase === 'FINAL' || (a.phase === 'APPROACH' && a.distNm < 13 && a.agl != null && a.agl < 6000);
+    if (!onFinal) continue;
+    const e = alignedEnd(a, airport);
+    if (e) ends.set(e, (ends.get(e) || 0) + 1);
+  }
+  return ends; // Map: runwayEnd -> count of aligned arrivals
+}
+
+// `observed` (optional Map end->count from inferActiveArrivals) overrides the
+// wind guess with the real, observed configuration when traffic reveals it.
+export function allocateRunways(airport, wx, observed = null) {
   const windDir = wx?.windDir ?? null;
   const windKt = wx?.windKt ?? 0;
 
@@ -84,6 +124,32 @@ export function allocateRunways(airport, wx) {
       hasIls: rwy.ils.includes(rwy.ends[endIdx]),
     };
   });
+
+  const arrSet = observed && observed.size ? new Set(observed.keys()) : null;
+  if (arrSet) {
+    // Real configuration observed from traffic: point each runway at the end
+    // actually in use, mark observed ends as arrivals, the rest as departures.
+    for (const s of strips) {
+      const obsEnd = s.ends.find((e) => arrSet.has(e));
+      if (obsEnd) {
+        const endIdx = s.ends.indexOf(obsEnd);
+        s.activeEnd = obsEnd;
+        s.activeHdg = (s.trueHdg + (endIdx === 1 ? 180 : 0)) % 360;
+        const comps = windDir != null ? windComponents(s.activeHdg, windDir, windKt) : { head: 0, cross: 0 };
+        s.head = comps.head; s.cross = comps.cross;
+        s.hasIls = s.ils.includes(obsEnd);
+        s.role = 'ARR';
+        s.observed = true;
+      } else {
+        s.role = 'DEP';
+      }
+      s.status = s.cross > 28 ? 'X-WIND' : 'ACTIVE';
+    }
+    if (!strips.some((s) => s.role.includes('DEP'))) {
+      strips.sort((a, b) => b.lenFt - a.lenFt)[0].role = 'DEP+ARR'; // ensure a departure runway
+    }
+    return strips;
+  }
 
   // Role assignment: longest gets arrivals; alternate the rest so both flows
   // always have at least one runway. Excess crosswind flags an advisory.

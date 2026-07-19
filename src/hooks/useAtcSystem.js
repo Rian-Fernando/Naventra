@@ -3,7 +3,7 @@ import { AIRPORTS } from '../data/airports.js';
 import { fetchLiveTraffic } from '../lib/adsb.js';
 import { fetchMetar } from '../lib/weather.js';
 import { SimEngine } from '../lib/sim.js';
-import { allocateRunways, annotateAircraft, detectConflicts, generateEvents, computeKpis } from '../engine/atc.js';
+import { allocateRunways, annotateAircraft, detectConflicts, generateEvents, computeKpis, inferActiveArrivals } from '../engine/atc.js';
 import { PredictionTracker } from '../engine/predictions.js';
 import { runwayPrior } from '../engine/learning.js';
 import { trackerConfigured, TRACKED_HUBS, fetchGlobalScorecard, fetchGlobalModels, priorFnFromModels } from '../lib/globalModel.js';
@@ -69,9 +69,16 @@ export function useAtcSystem() {
   // Shared post-processing for both live and simulated tracks.
   const runEngine = useCallback((tracks, ap, isLive) => {
     const r = ref.current;
-    const rwys = r.runways.length ? r.runways : allocateRunways(ap, r.weather);
-    // Prefer the 24/7 tracker's learned priors when available, else local.
-    const annotated = annotateAircraft(tracks, ap, rwys, r.gateMap, r.globalPrior || runwayPrior);
+    const priorFn = r.globalPrior || runwayPrior;
+    // Two passes: allocate from wind, read the config off aircraft actually on
+    // final, then re-allocate to that observed configuration and re-annotate.
+    const baseRwys = allocateRunways(ap, r.weather);
+    let annotated = annotateAircraft(tracks, ap, baseRwys, r.gateMap, priorFn);
+    const observed = inferActiveArrivals(annotated, ap);
+    const rwys = observed.size ? allocateRunways(ap, r.weather, observed) : baseRwys;
+    if (observed.size) annotated = annotateAircraft(tracks, ap, rwys, r.gateMap, priorFn);
+    r.runways = rwys;
+    setRunways(rwys);
     const confl = detectConflicts(annotated, ap);
     const { decisions: evD, comms: evC } = generateEvents(
       r.prevAnnotated, annotated, ap, rwys, confl, r.prevConflictIds, r.weather

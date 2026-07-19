@@ -3,7 +3,7 @@
 // engine + grading code with the browser (../../src/engine/*).
 
 import { AIRPORTS } from '../../src/data/airports.js';
-import { allocateRunways, annotateAircraft } from '../../src/engine/atc.js';
+import { allocateRunways, annotateAircraft, inferActiveArrivals } from '../../src/engine/atc.js';
 import { octantOf } from '../../src/engine/octant.js';
 import { classifyLandingRunway, gradeItems } from '../../src/engine/grading.js';
 import {
@@ -61,13 +61,17 @@ export async function tickAirport(env, icao) {
     fetchTraffic(airport), fetchWx(icao), loadModel(env.DB, icao), loadOpen(env.DB, icao), arrRate1h(env.DB, icao, now),
   ]);
 
-  const rwys = allocateRunways(airport, wx || {});
+  const priorFn = priorFromModel(model);
+  const live = tracks.filter((t) => t.altFt == null || t.altFt < 60000);
+  // Two passes: wind base config, then re-allocate to the configuration read
+  // off aircraft actually on final (matches how the field is really operating).
+  const baseRwys = allocateRunways(airport, wx || {});
+  let annotated = annotateAircraft(live, airport, baseRwys, {}, priorFn);
+  const observed = inferActiveArrivals(annotated, airport);
+  const rwys = observed.size ? allocateRunways(airport, wx || {}, observed) : baseRwys;
+  if (observed.size) annotated = annotateAircraft(live, airport, rwys, {}, priorFn);
   const arrEnds = rwys.filter((r) => r.role.includes('ARR')).map((r) => r.activeEnd);
   const depEnds = rwys.filter((r) => r.role.includes('DEP')).map((r) => r.activeEnd);
-  const annotated = annotateAircraft(
-    tracks.filter((t) => t.altFt == null || t.altFt < 60000),
-    airport, rwys, {}, priorFromModel(model)
-  );
 
   const inboundCount = annotated.filter((a) => a.phase === 'ARRIVAL' || a.phase === 'APPROACH' || a.phase === 'FINAL').length;
   const sectorCount = annotated.length;
