@@ -82,14 +82,18 @@ export function alignedEnd(ac, airport) {
   return best;
 }
 
-// Read the ACTIVE arrival runways from traffic that's already on final/short
-// approach — this is what a controller sees, and it beats a wind guess because
-// real flows follow procedure and inertia, not just the wind vector.
+// Read the ACTIVE arrival runways from traffic on final approach — what a
+// controller sees, and better than a wind guess because real flows follow
+// procedure and inertia. This test is INDEPENDENT of the wind-based phase:
+// otherwise, aircraft landing opposite the wind-guessed direction would never
+// be classified "final" and the inference would miss the true configuration.
 export function inferActiveArrivals(annotated, airport) {
   const ends = new Map();
   for (const a of annotated) {
-    const onFinal = a.phase === 'FINAL' || (a.phase === 'APPROACH' && a.distNm < 13 && a.agl != null && a.agl < 6000);
-    if (!onFinal) continue;
+    if (a.onGround || a.altFt == null || a.gs < 60) continue;
+    if (a.agl == null || a.agl > 4000 || a.distNm > 12) continue;
+    if (a.vs > 400) continue;       // descending/level, not climbing out (departure)
+    if (a.closing < 0.2) continue;  // tracking toward the field, not away
     const e = alignedEnd(a, airport);
     if (e) ends.set(e, (ends.get(e) || 0) + 1);
   }

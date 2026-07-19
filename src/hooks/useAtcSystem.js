@@ -74,7 +74,12 @@ export function useAtcSystem() {
     // final, then re-allocate to that observed configuration and re-annotate.
     const baseRwys = allocateRunways(ap, r.weather);
     let annotated = annotateAircraft(tracks, ap, baseRwys, r.gateMap, priorFn);
-    const observed = inferActiveArrivals(annotated, ap);
+    const obsNow = inferActiveArrivals(annotated, ap);
+    // Sticky config: real configurations hold for hours, so keep the last
+    // observed one through quiet ticks instead of snapping back to the wind guess.
+    if (obsNow.size) r.observedConfig = { ends: [...obsNow.keys()], ts: Date.now() };
+    const fresh = r.observedConfig && Date.now() - r.observedConfig.ts < 20 * 60 * 1000;
+    const observed = obsNow.size ? obsNow : (fresh ? new Map(r.observedConfig.ends.map((e) => [e, 1])) : new Map());
     const rwys = observed.size ? allocateRunways(ap, r.weather, observed) : baseRwys;
     if (observed.size) annotated = annotateAircraft(tracks, ap, rwys, r.gateMap, priorFn);
     r.runways = rwys;
@@ -128,6 +133,7 @@ export function useAtcSystem() {
     r.failCount = 0;
     r.runways = [];
     r.rwySignature = '';
+    r.observedConfig = null;
     setAircraft([]);
     setConflicts([]);
     setDecisions([]);

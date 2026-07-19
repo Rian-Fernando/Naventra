@@ -9,7 +9,7 @@ import { classifyLandingRunway, gradeItems } from '../../src/engine/grading.js';
 import {
   loadModel, priorFromModel, recordLandingIntoModel, etaBiasSec,
   loadOpen, upsertOpenStmt, deleteOpenStmt, recordLandingStmt, bumpStatsStmt, saveModelStmt,
-  recordSampleStmt, arrRate1h,
+  recordSampleStmt, arrRate1h, loadConfig, saveConfigStmt,
 } from './store.js';
 import { lockFeatures, decodeWx } from './features.js';
 
@@ -57,8 +57,9 @@ export async function tickAirport(env, icao) {
   const airport = AIRPORTS[icao];
   const now = Date.now();
 
-  const [tracks, wx, model, open, arrRate] = await Promise.all([
+  const [tracks, wx, model, open, arrRate, cfgState] = await Promise.all([
     fetchTraffic(airport), fetchWx(icao), loadModel(env.DB, icao), loadOpen(env.DB, icao), arrRate1h(env.DB, icao, now),
+    loadConfig(env.DB, icao),
   ]);
 
   const priorFn = priorFromModel(model);
@@ -67,7 +68,17 @@ export async function tickAirport(env, icao) {
   // off aircraft actually on final (matches how the field is really operating).
   const baseRwys = allocateRunways(airport, wx || {});
   let annotated = annotateAircraft(live, airport, baseRwys, {}, priorFn);
-  const observed = inferActiveArrivals(annotated, airport);
+  const obsNow = inferActiveArrivals(annotated, airport);
+  // Sticky config across the 1-min cron: hold the last observed configuration
+  // through quiet ticks (real configs are stable for hours) rather than reverting
+  // to the wind guess when nothing happens to be on final that minute.
+  let observed = obsNow;
+  let cfgToSave = null;
+  if (obsNow.size) {
+    cfgToSave = { ends: [...obsNow.keys()], ts: now };
+  } else if (cfgState && now - cfgState.ts < 25 * 60000) {
+    observed = new Map(cfgState.ends.map((e) => [e, 1]));
+  }
   const rwys = observed.size ? allocateRunways(airport, wx || {}, observed) : baseRwys;
   if (observed.size) annotated = annotateAircraft(live, airport, rwys, {}, priorFn);
   const arrEnds = rwys.filter((r) => r.role.includes('ARR')).map((r) => r.activeEnd);
@@ -183,6 +194,7 @@ export async function tickAirport(env, icao) {
   for (const id of openDeletes) { openUpserts.delete(id); stmts.push(deleteOpenStmt(env.DB, id)); }
   for (const rec of openUpserts.values()) stmts.push(upsertOpenStmt(env.DB, icao, rec));
   stmts.push(saveModelStmt(env.DB, model));
+  if (cfgToSave) stmts.push(saveConfigStmt(env.DB, icao, cfgToSave));
 
   if (stmts.length) await env.DB.batch(stmts);
   return { icao, graded, locked, samples: samples.length, tracked: annotated.length };

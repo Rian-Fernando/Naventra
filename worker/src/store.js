@@ -87,6 +87,20 @@ export function recordSampleStmt(db, s) {
     JSON.stringify(s.features || {}), JSON.stringify(s.outcome || {}));
 }
 
+// Sticky observed runway configuration, kept in the state table.
+export async function loadConfig(db, icao) {
+  const row = await db.prepare('SELECT data_json FROM state WHERE icao=?').bind(`cfg:${icao}`).first();
+  if (!row) return null;
+  try { return JSON.parse(row.data_json); } catch { return null; }
+}
+
+export function saveConfigStmt(db, icao, cfg) {
+  return db.prepare(
+    `INSERT INTO state (icao, data_json, updated_ts) VALUES (?1,?2,?3)
+     ON CONFLICT(icao) DO UPDATE SET data_json=?2, updated_ts=?3`
+  ).bind(`cfg:${icao}`, JSON.stringify(cfg), Date.now());
+}
+
 export async function datasetCount(db) {
   const row = await db.prepare('SELECT COUNT(*) k FROM samples').first();
   return row?.k || 0;
