@@ -894,12 +894,12 @@ body {
   font-size: 11px;
   color: var(--text-dim);
 }
-.learn-strip > span { flex: 1; min-width: 0; line-height: 1.35; }
+.learn-strip .ls-text { flex: 1; min-width: 0; line-height: 1.35; }
 .learn-strip b { color: var(--cyan); font-family: var(--font-display); font-size: 15px; letter-spacing: 0.03em; }
 .ls-dot {
-  width: 7px; height: 7px; border-radius: 50%;
+  width: 7px; height: 7px; aspect-ratio: 1; border-radius: 50%;
   background: var(--cyan); box-shadow: 0 0 8px var(--cyan);
-  animation: pulse 1.6s ease-in-out infinite; flex-shrink: 0;
+  animation: pulse 1.6s ease-in-out infinite; flex: 0 0 auto;
 }
 .ls-tag {
   margin-left: auto; font-size: 8px; letter-spacing: 0.14em;

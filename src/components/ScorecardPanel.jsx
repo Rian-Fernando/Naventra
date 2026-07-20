@@ -45,7 +45,7 @@ export default function ScorecardPanel({ scorecard, mode, scope = 'session', glo
       {globalTotals && (
         <div className="learn-strip" title="The always-on tracker runs 24/7, learning from every real landing it grades across JFK, LAX and LHR — and logging each as a labeled training row.">
           <span className="ls-dot" />
-          <span>
+          <span className="ls-text">
             <b>{processed.toLocaleString()}</b> ops graded
             {globalTotals.samples > 0 && <> · <b>{globalTotals.samples.toLocaleString()}</b> training rows</>}
           </span>
