@@ -16,6 +16,8 @@ const TERMS = [
   ['Squawk', 'The 4-digit transponder code. 1200 means VFR (visual rules — not separated by ATC, so excluded from conflict grading). 7700 is an emergency.'],
   ['FL (Flight Level)', 'Pressure altitude in hundreds of feet: FL350 ≈ 35,000ft. Below 18,000ft we show feet directly.'],
   ['Ground speed (kt)', 'Speed over the ground in knots (1kt = 1.15mph). The velocity leader line on each target shows one minute of travel.'],
+  ['nm (nautical mile)', 'The unit of distance in aviation: 1nm = 1.852km ≈ 1.15 land miles. All distances on the scope — range rings, distance-to-field, separation minima — are in nautical miles.'],
+  ['Range (10/20/40/80nm)', 'The radar\'s viewing radius, selectable above the scope. 10nm (~18.5km) is a close-in view of finals and the field; 40nm (~74km, the default) is the classic TRACON picture of the whole arrival flow; 80nm (~148km) shows the enroute feeds. The rings mark quarter fractions of the selected range.'],
   ['Stand / Gate', 'The parking position assigned to an arrival, drawn from the airport\'s real terminal and gate layout.'],
   ['Go-around', 'An abandoned landing — the aircraft climbs away from short final and rejoins the sequence. Detected automatically; any locked predictions for that approach are voided, not graded.'],
   ['VFR / IFR', 'Visual vs Instrument Flight Rules. Airliners fly IFR and are separated by ATC; VFR traffic (small GA, helicopters) self-separates and is filtered out of the conflict monitor.'],
@@ -105,8 +107,22 @@ export default function Guide() {
         <p>
           The loop is <b>predict → observe → measure error → adjust → repeat</b>, running on live outcomes.
           It's <em>online</em> learning: no training run, no dataset to download — the model improves one
-          real landing at a time, and the scorecard shows whether it's actually working. Only live landings
-          update it (never the simulation), so it learns the real world, not itself.
+          real operation at a time (arrivals <em>and</em> departures), and the scorecard shows whether it's
+          actually working. Only live traffic updates it (never the simulation), so it learns the real
+          world, not itself.
+        </p>
+        <p>
+          <b>What about conflicts?</b> Deliberately <em>not</em> learned from. A predicted conflict that
+          never materialises is usually a real controller doing their job — there's no way to observe the
+          counterfactual ("would they have collided?"), so feeding those outcomes back would teach the
+          model from unknowable labels. Conflict advisories stay a pure monitoring function; the learning
+          loop only consumes outcomes with solid ground truth (which runway, what time, what order).
+        </p>
+        <p>
+          <b>Two accuracy numbers.</b> The big percentage is <em>all-time</em> — every graded prediction
+          ever, including early versions of the engine, so it moves slowly by design (an honest lifetime
+          record). The <b>last-24h</b> figure and the trend line show what the <em>current</em> engine is
+          achieving right now.
         </p>
 
         <h2>No API keys · no paid model · $0</h2>

@@ -213,6 +213,12 @@ export class PredictionTracker {
         })),
       },
       session: { n: this.session.n, pct: pct(this.session) },
+      recent24: (() => {
+        const dayAgo = Date.now() - 24 * 3600 * 1000;
+        let c = 0, t = 0;
+        for (const e of this.store.recent) if (e.ts > dayAgo) for (const it of e.items) { t++; c += it.ok ? 1 : 0; }
+        return t ? { n: t, pct: Math.round((c / t) * 100) } : null;
+      })(),
       openCount: this.open.size + this.openDep.size,
       learned: learnedLandings(this.airport.icao),
       recent: this.store.recent,

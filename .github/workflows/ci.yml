@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Build frontend
+        run: npm run build
+      - name: Worker syntax
+        run: for f in worker/src/*.js; do node --check "$f"; done
+      - name: Engine regression suite
+        run: node scripts/ci-regression.mjs

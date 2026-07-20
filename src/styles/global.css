@@ -883,6 +883,8 @@ body {
 .learn-strip {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: 3px;
   gap: 7px;
   margin: 8px 10px 0;
   padding: 6px 11px;
@@ -892,6 +894,7 @@ body {
   font-size: 11px;
   color: var(--text-dim);
 }
+.learn-strip > span { flex: 1; min-width: 0; line-height: 1.35; }
 .learn-strip b { color: var(--cyan); font-family: var(--font-display); font-size: 15px; letter-spacing: 0.03em; }
 .ls-dot {
   width: 7px; height: 7px; border-radius: 50%;
@@ -923,6 +926,9 @@ body {
 
 .score-sub { font-size: 10px; color: var(--text-dim); line-height: 1.5; }
 .score-sub b { color: var(--text); }
+.score-24h { color: var(--cyan); margin-top: 3px; font-size: 10.5px; }
+.score-24h b { font-family: var(--font-display); font-size: 13px; }
+.score-24h em { color: var(--muted); font-style: normal; font-size: 8.5px; }
 .score-open { color: var(--amber); margin-top: 3px; font-size: 9.5px; }
 .score-learn { color: var(--cyan); margin-top: 2px; font-size: 9px; letter-spacing: 0.04em; }
 

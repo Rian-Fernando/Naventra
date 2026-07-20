@@ -46,7 +46,7 @@ export default function ScorecardPanel({ scorecard, mode, scope = 'session', glo
         <div className="learn-strip" title="The always-on tracker runs 24/7, learning from every real landing it grades across JFK, LAX and LHR — and logging each as a labeled training row.">
           <span className="ls-dot" />
           <span>
-            <b>{processed.toLocaleString()}</b> real operation{processed === 1 ? '' : 's'} graded
+            <b>{processed.toLocaleString()}</b> ops graded
             {globalTotals.samples > 0 && <> · <b>{globalTotals.samples.toLocaleString()}</b> training rows</>}
           </span>
           <span className="ls-tag">SELF-LEARNING · 24/7</span>
@@ -62,6 +62,9 @@ export default function ScorecardPanel({ scorecard, mode, scope = 'session', glo
             <>of <b>{all.n}</b> predictions correct<br />{global ? 'always-on tracker · all visitors' : 'all-time · live data only'}</>
           ) : (
             <>no landings graded yet —<br />predictions lock as flights join approach</>
+          )}
+          {sc?.recent24?.pct != null && (
+            <div className="score-24h">last 24h: <b>{sc.recent24.pct}%</b> <em>({sc.recent24.n})</em></div>
           )}
           {sc?.openCount > 0 && <div className="score-open">{sc.openCount} prediction{sc.openCount > 1 ? 's' : ''} locked &amp; awaiting touchdown</div>}
           {sc?.learned > 0 && <div className="score-learn">self-improving · learned from {sc.learned} live landing{sc.learned > 1 ? 's' : ''}</div>}

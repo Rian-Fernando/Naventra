@@ -177,11 +177,19 @@ export async function getScorecard(db, icao) {
     ? await db.prepare('SELECT COUNT(*) k FROM samples WHERE icao=?').bind(icao).first()
     : await db.prepare('SELECT COUNT(*) k FROM samples').first();
 
+  // Trailing-24h accuracy — shows current model quality without the drag of
+  // months of historical grades in the all-time number.
+  const dayAgo = Date.now() - 24 * 3600 * 1000;
+  const r24 = icao
+    ? await db.prepare('SELECT SUM(correct) c, SUM(total) t FROM landings WHERE icao=? AND ts>?').bind(icao, dayAgo).first()
+    : await db.prepare('SELECT SUM(correct) c, SUM(total) t FROM landings WHERE ts>?').bind(dayAgo).first();
+
   return {
     allTime: { n: totalN, pct: totalN ? Math.round((totalC / totalN) * 100) : null, byCat },
     openCount: openRow?.k || 0,
     learned: modelRow?.l || 0,
     samples: sampleRow?.k || 0,
+    recent24: r24 && r24.t ? { n: r24.t, pct: Math.round((r24.c / r24.t) * 100) } : null,
     recent: recentRows.map((r) => ({
       ts: r.ts, callsign: r.callsign, airport: r.iata, live: true, items: JSON.parse(r.items_json),
     })),
