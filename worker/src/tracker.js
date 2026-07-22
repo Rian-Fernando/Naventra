@@ -33,13 +33,35 @@ function normalize(raw, now) {
   };
 }
 
+// Free, keyless ADS-B aggregators that share the /v2/point/{lat}/{lon}/{radius}
+// response shape ({ ac: [...] }). Cloudflare's shared egress IPs get rate-limited
+// (429) by any single source, so we fail over across all of them and rotate the
+// start point each minute to spread load. If every source is down we surface the
+// last error and the tick is skipped (no bad data written).
+const ADSB_SOURCES = [
+  (lat, lon, r) => `https://api.airplanes.live/v2/point/${lat}/${lon}/${r}`,
+  (lat, lon, r) => `https://api.adsb.lol/v2/point/${lat}/${lon}/${r}`,
+  (lat, lon, r) => `https://opendata.adsb.fi/api/v2/point/${lat}/${lon}/${r}`,
+];
+
 async function fetchTraffic(airport) {
-  const url = `https://api.airplanes.live/v2/point/${airport.lat.toFixed(4)}/${airport.lon.toFixed(4)}/${RADIUS_NM}`;
-  const res = await fetch(url, { headers: { 'User-Agent': 'naventra-tracker/1.0' } });
-  if (!res.ok) throw new Error(`adsb ${res.status}`);
-  const data = await res.json();
-  const now = Date.now();
-  return (data.ac || data.aircraft || []).map((a) => normalize(a, now)).filter(Boolean);
+  const lat = airport.lat.toFixed(4), lon = airport.lon.toFixed(4);
+  const n = ADSB_SOURCES.length;
+  const start = Math.floor(Date.now() / 60000) % n; // rotate primary by the minute
+  let lastErr = 'no source';
+  for (let i = 0; i < n; i++) {
+    const build = ADSB_SOURCES[(start + i) % n];
+    try {
+      const res = await fetch(build(lat, lon, RADIUS_NM), {
+        headers: { 'User-Agent': 'naventra-tracker/1.0', Accept: 'application/json' },
+      });
+      if (!res.ok) { lastErr = `adsb ${res.status}`; continue; }
+      const data = await res.json();
+      const now = Date.now();
+      return (data.ac || data.aircraft || []).map((a) => normalize(a, now)).filter(Boolean);
+    } catch (e) { lastErr = `adsb ${e.message}`; }
+  }
+  throw new Error(lastErr);
 }
 
 async function fetchWx(icao) {
