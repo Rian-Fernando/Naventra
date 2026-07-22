@@ -46,10 +46,16 @@ function useCountUp(target, run, ms = 1300) {
   return v;
 }
 
+const HONEST = [
+  ['Free & keyless sources', 'Live ADS-B, METAR/TAF weather and public airport data — every feed is free and needs no API key.'],
+  ['Live traffic only is scored', 'Only real traffic banks into the all-time accuracy. The built-in simulation is graded on screen but never persisted.'],
+  ['Locked before the outcome', 'Each prediction is frozen before the aircraft lands, then measured from observation alone — no hindsight.'],
+  ['Auditable, not marketing', 'The full labeled training dataset is downloadable, so the scorecard can be independently checked.'],
+];
+
 export default function Landing() {
   const [stats, setStats] = useState(null);
   const [seen, setSeen] = useState(false);
-  const [progress, setProgress] = useState(0);
   const statRef = useRef(null);
 
   useEffect(() => {
@@ -65,20 +71,14 @@ export default function Landing() {
     return () => { alive = false; clearInterval(poll); document.body.classList.remove('landing-mode'); };
   }, []);
 
-  // Scroll-reveal for any .reveal element + a top progress bar.
+  // Scroll-reveal for any .reveal element.
   useEffect(() => {
     const io = new IntersectionObserver(
       (entries) => entries.forEach((e) => e.isIntersecting && e.target.classList.add('in')),
-      { threshold: 0.18 }
+      { threshold: 0.15 }
     );
     document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
-    const onScroll = () => {
-      const max = document.body.scrollHeight - window.innerHeight;
-      setProgress(max > 0 ? window.scrollY / max : 0);
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => { io.disconnect(); window.removeEventListener('scroll', onScroll); };
+    return () => io.disconnect();
   }, []);
 
   useEffect(() => {
@@ -98,7 +98,6 @@ export default function Landing() {
 
   return (
     <div className="lp">
-      <div className="lp-progress" style={{ transform: `scaleX(${progress})` }} />
       <LandingScene3D />
       <div className="lp-vignette" />
 
@@ -216,12 +215,17 @@ export default function Landing() {
       <section className="lp-trust reveal">
         <div className="lp-kicker">BUILT TO BE HONEST</div>
         <h2>No paid APIs. No fake data. No cherry-picking.</h2>
-        <ul className="lp-checks">
-          <li><Check size={16} /> Every source is <b>free and keyless</b> — live ADS-B, METAR/TAF weather, public airport data.</li>
-          <li><Check size={16} /> Only <b>live traffic</b> is banked into the all-time score — the simulation is never graded.</li>
-          <li><Check size={16} /> Predictions are <b>locked before</b> the outcome and measured from observation alone.</li>
-          <li><Check size={16} /> The full training dataset is <b>downloadable</b> — the scorecard is auditable, not marketing.</li>
-        </ul>
+        <div className="lp-honest">
+          {HONEST.map(([t, d], i) => (
+            <div className="lp-honest-card glass" key={t} style={{ transitionDelay: `${(i % 2) * 80}ms` }}>
+              <div className="lp-honest-ico"><Check size={16} /></div>
+              <div>
+                <h3>{t}</h3>
+                <p>{d}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* --------------------------------------------------------- final --- */}
@@ -233,16 +237,38 @@ export default function Landing() {
 
       {/* -------------------------------------------------------- footer --- */}
       <footer className="lp-footer">
-        <div className="lp-foot-brand">
-          <img src="/naventra-mark.svg" width="22" height="22" alt="" />
-          <span>Naventra</span>
+        <div className="lp-foot-top">
+          <div className="lp-foot-brand-col">
+            <div className="lp-foot-brand">
+              <img src="/naventra-mark.svg" width="24" height="24" alt="" />
+              <span>Naventra</span>
+            </div>
+            <p>An AI-native air traffic control console working live traffic — and grading itself against reality.</p>
+          </div>
+          <div className="lp-foot-cols">
+            <div>
+              <h4>Product</h4>
+              <a href="/live">Live console</a>
+              <a href="/guide">Operator&rsquo;s guide</a>
+              <a href="/data">Data &amp; sources</a>
+            </div>
+            <div>
+              <h4>Project</h4>
+              <a href="/about">About</a>
+              <a href="https://github.com/Rian-Fernando/Naventra" rel="external" target="_blank"><Github size={13} /> Source</a>
+              <a href="https://rianfernando.com" rel="external" target="_blank">Portfolio</a>
+            </div>
+            <div>
+              <h4>Legal</h4>
+              <a href="/privacy">Privacy</a>
+              <a href="/data">Attribution</a>
+            </div>
+          </div>
         </div>
-        <div className="lp-foot-links">
-          <a href="/live">Live console</a>
-          <a href="/guide">Operator&rsquo;s guide</a>
-          <a href="https://github.com/Rian-Fernando/Naventra" rel="external" target="_blank"><Github size={14} /> Source</a>
+        <div className="lp-foot-bottom">
+          <span>© {new Date().getFullYear()} Naventra · Designed &amp; built by <a href="https://rianfernando.com" rel="external" target="_blank">Rian Fernando</a></span>
+          <span className="lp-disclaimer">Not affiliated with any aviation authority. Demonstration only — not for operational or navigational use.</span>
         </div>
-        <div className="lp-foot-by">Designed &amp; built by <a href="https://rianfernando.com" rel="external" target="_blank">Rian Fernando</a></div>
       </footer>
     </div>
   );

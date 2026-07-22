@@ -115,9 +115,12 @@ body {
 .rpanel > .panel { flex: 1 1 auto; min-height: 0; }
 .rpanel.sized > .panel { max-height: none !important; height: 100%; }
 .rpanel.collapsed { flex: none !important; }
-.rpanel.collapsed > .panel { max-height: none !important; }
+.rpanel.collapsed > .panel { max-height: none !important; min-height: 0 !important; }
 .rpanel.collapsed > .panel > *:not(.panel-head) { display: none; }
 .rpanel.collapsed .panel-head { border-bottom: none; }
+/* Reserve room at the header's right edge so the collapse toggle never lands on
+   top of a panel's status badge. */
+.rpanel > .panel > .panel-head { padding-right: 30px; }
 
 .rpanel-toggle {
   position: absolute; top: 6px; right: 8px; width: 20px; height: 20px;

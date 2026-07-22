@@ -1,9 +1,12 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import Landing from './pages/Landing.jsx';
+import InfoPage from './pages/InfoPage.jsx';
 
 // The live console pulls in three.js, the engine and the hooks — defer it so a
 // first-time visitor landing on "/" doesn't pay for it up front.
 const Console = lazy(() => import('./Console.jsx'));
+
+const INFO_ROUTES = ['/privacy', '/data', '/about'];
 
 // Path-based routing so /live and /guide are real, crawlable URLs. Internal
 // <a href> clicks are intercepted into pushState; legacy #/guide links still land.
@@ -41,11 +44,13 @@ function usePathRoute() {
 
 export default function App() {
   const route = usePathRoute();
-  const isConsole = route.startsWith('/live') || route.startsWith('/guide');
-  if (!isConsole) return <Landing />;
-  return (
-    <Suspense fallback={<div className="boot-splash">Loading live console…</div>}>
-      <Console route={route} />
-    </Suspense>
-  );
+  if (route.startsWith('/live') || route.startsWith('/guide')) {
+    return (
+      <Suspense fallback={<div className="boot-splash">Loading live console…</div>}>
+        <Console route={route} />
+      </Suspense>
+    );
+  }
+  if (INFO_ROUTES.some((p) => route.startsWith(p))) return <InfoPage route={route} />;
+  return <Landing />;
 }
