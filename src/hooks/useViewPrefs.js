@@ -26,12 +26,17 @@ const ALL_ON = Object.fromEntries(PANELS.map(([k]) => [k, true]));
 export const COLW = { left: { min: 240, max: 460, def: 300 }, right: { min: 270, max: 520, def: 340 } };
 const clampW = (side, v) => Math.max(COLW[side].min, Math.min(COLW[side].max, v));
 
+// Radio Communications footer height (px) — resizable via its top edge.
+export const COMMSH = { min: 96, max: 440, def: 168 };
+const clampH = (v) => Math.max(COMMSH.min, Math.min(COMMSH.max, v));
+
 const DEFAULT = {
   panels: { ...ALL_ON },
   filters: { arr: true, dep: true, enr: true, gnd: true },
   airline: null,
   radarView: '3D',
   colW: { left: COLW.left.def, right: COLW.right.def },
+  commsH: COMMSH.def,
 };
 
 // Quick layout presets for the menu.
@@ -53,6 +58,7 @@ function load() {
         airline: raw.airline ?? null,
         radarView: raw.radarView === '2D' ? '2D' : '3D',
         colW: { left: clampW('left', cw.left ?? COLW.left.def), right: clampW('right', cw.right ?? COLW.right.def) },
+        commsH: clampH(raw.commsH ?? COMMSH.def),
       };
     }
   } catch { /* ignore */ }
@@ -77,11 +83,12 @@ export function useViewPrefs() {
   const setColW = useCallback((side, v) => {
     setPrefs((p) => ({ ...p, colW: { ...p.colW, [side]: clampW(side, v) } }));
   }, []);
+  const setCommsH = useCallback((v) => setPrefs((p) => ({ ...p, commsH: clampH(v) })), []);
   const applyPreset = useCallback((name) => {
     const panels = PRESETS[name];
     if (panels) setPrefs((p) => ({ ...p, panels: { ...panels } }));
   }, []);
   const reset = useCallback(() => setPrefs(structuredClone(DEFAULT)), []);
 
-  return { prefs, colW: prefs.colW, togglePanel, toggleFilter, setAirline, setRadarView, setColW, applyPreset, reset };
+  return { prefs, colW: prefs.colW, commsH: prefs.commsH, togglePanel, toggleFilter, setAirline, setRadarView, setColW, setCommsH, applyPreset, reset };
 }

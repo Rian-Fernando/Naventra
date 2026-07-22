@@ -15,7 +15,7 @@ import ForecastPanel from './components/ForecastPanel.jsx';
 import CommsLog from './components/CommsLog.jsx';
 import AircraftDetail from './components/AircraftDetail.jsx';
 import ScorecardPanel from './components/ScorecardPanel.jsx';
-import ResizablePanel, { ColResizer } from './components/ResizablePanel.jsx';
+import ResizablePanel, { ColResizer, RowResizer } from './components/ResizablePanel.jsx';
 import Guide from './pages/Guide.jsx';
 
 // The live console (routes /live and /guide). Kept separate from the marketing
@@ -78,10 +78,12 @@ export default function Console({ route }) {
     if (view.colW.left !== COLW.left.def) mainStyle['--cw-left'] = `${view.colW.left}px`;
     if (view.colW.right !== COLW.right.def) mainStyle['--cw-right'] = `${view.colW.right}px`;
   }
-  const shellStyle = { gridTemplateRows: '54px 1fr' };
+  // The comms footer gets its own bounded, resizable row via the has-comms class
+  // + --comms-h var (a bare inline row template would fight the mobile stacking).
+  const shellStyle = { '--comms-h': `${view.commsH}px` };
 
   return (
-    <div className={`shell ${onGuide ? 'shell-guide' : ''}`} style={onGuide ? undefined : shellStyle}>
+    <div className={`shell ${onGuide ? 'shell-guide' : ''} ${!onGuide && panels.comms ? 'has-comms' : ''}`} style={onGuide ? undefined : shellStyle}>
       <Header
         airport={atc.airport} icao={atc.icao} setIcao={atc.setIcao}
         mode={atc.mode} source={atc.source}
@@ -139,7 +141,12 @@ export default function Console({ route }) {
             )}
           </div>
 
-          {panels.comms && <CommsLog comms={atc.comms} airport={atc.airport} />}
+          {panels.comms && (
+            <div className="comms-wrap">
+              <RowResizer view={view} />
+              <CommsLog comms={atc.comms} airport={atc.airport} />
+            </div>
+          )}
         </>
       )}
     </div>

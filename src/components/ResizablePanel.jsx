@@ -87,4 +87,23 @@ export function ColResizer({ side, view }) {
   return <div className={`col-resizer col-resizer-${side}`} style={pos} onPointerDown={onDown} title="Drag to resize column" />;
 }
 
+// Drag handle on the top edge of the comms footer to change its height.
+export function RowResizer({ view }) {
+  const onDown = (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = view.commsH;
+    const move = (ev) => view.setCommsH(startH - (ev.clientY - startY));
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.body.style.userSelect = '';
+    };
+    document.body.style.userSelect = 'none';
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  };
+  return <div className="row-resizer" onPointerDown={onDown} title="Drag to resize" />;
+}
+
 export { COLW };

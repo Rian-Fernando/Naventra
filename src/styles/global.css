@@ -52,12 +52,25 @@ body {
   /* Cap the single column at the viewport so a wide header can't stretch the
      whole grid past screen edge (which clipped the right column). */
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 54px 1fr 168px;
+  grid-template-rows: 54px 1fr;
   height: 100vh;
   width: 100%;
   gap: 8px;
   padding: 8px;
 }
+/* Comms footer present → give it its own resizable row (--comms-h). */
+.shell.has-comms { grid-template-rows: 54px 1fr var(--comms-h, 168px); }
+
+.comms-wrap { position: relative; display: flex; min-height: 0; }
+.comms-wrap > .panel { flex: 1; min-height: 0; }
+.row-resizer { position: absolute; top: -4px; left: 0; right: 0; height: 9px; cursor: ns-resize; z-index: 8; }
+.row-resizer::after {
+  content: ''; position: absolute; left: 50%; top: 3px; transform: translateX(-50%);
+  width: 38px; height: 3px; border-radius: 2px; background: var(--line-bright);
+  opacity: 0; transition: opacity 0.15s, background 0.15s;
+}
+.comms-wrap:hover .row-resizer::after { opacity: 0.65; }
+.row-resizer:hover::after { background: var(--cyan); opacity: 1; }
 
 .main {
   display: grid;
@@ -1256,11 +1269,12 @@ body {
 /* Tablet / phone: abandon the fixed console grid for a scrollable stack. */
 @media (max-width: 960px) {
   body { overflow-y: auto; overflow-x: hidden; }
-  .shell {
+  .shell, .shell.has-comms {
     height: auto;
     min-height: 100vh;
     grid-template-rows: auto auto auto;
   }
+  .row-resizer { display: none; }
   .header {
     flex-wrap: wrap;
     height: auto;
@@ -1282,7 +1296,7 @@ body {
   .radar-panel { height: 74vh; min-height: 460px; }
   .score-panel { max-height: none; }
   /* Comms log becomes a normal stacked panel instead of a fixed footer. */
-  .shell > .panel:last-child { height: 320px; }
+  .shell > .panel:last-child, .comms-wrap { height: 320px; }
 }
 
 @media (max-width: 560px) {
