@@ -4,6 +4,8 @@ const TERMS = [
   ['ADS-B', 'Automatic Dependent Surveillance–Broadcast. Aircraft continuously broadcast their GPS position, altitude, speed and identity. This is the live data source for every target on the scope — the same returns real controllers and sites like flight trackers use.'],
   ['TRACON', 'Terminal Radar Approach Control — the facility working traffic in the ~50nm ring around an airport, between the enroute centers and the tower. This console models a TRACON position.'],
   ['METAR', 'The standardized hourly airport weather report (wind, visibility, clouds, temperature, pressure). The raw METAR is shown verbatim in the weather panel; the decision core decodes it to pick runways.'],
+  ['TAF (forecast)', 'Terminal Aerodrome Forecast — the airport’s official forecast of wind, visibility, cloud and weather over the next ~24–30 hours, in change periods. The Weather Outlook panel runs each period through the same runway allocator to show, in advance, when the wind will flip the runways and reroute the arrival flow.'],
+  ['Disruption risk', 'A transparent model estimate (LOW / MODERATE / HIGH) of how operationally stressed the field will be in a forecast period, scored from projected crosswind, gusts, visibility and ceiling. It is NOT a feed of real airline cancellations (those aren’t available from free sources) — it is the weather stress that drives real delays and cancellations.'],
   ['ATIS', 'Automatic Terminal Information Service — a looped broadcast of current weather and active runways, labeled with a phonetic letter (Information ALPHA, BRAVO…) that increments with each update.'],
   ['Flight strip', 'One aircraft\'s summary card: callsign, type, altitude, speed, distance, ETA, assigned runway, stand and squawk. Paper strips are still used in real towers; ours are digital and update live.'],
   ['Phases', 'Every track is classified each sweep: ENROUTE (passing through) → ARRIVAL (inbound, descending) → APPROACH (committed, being sequenced) → FINAL (aligned with a runway) → GROUND. Departures run the ladder in reverse.'],
@@ -38,7 +40,7 @@ export default function Guide() {
   return (
     <div className="guide-wrap">
       <div className="guide">
-        <a className="guide-back" href="/"><ArrowLeft size={13} /> BACK TO CONSOLE</a>
+        <a className="guide-back" href="/live"><ArrowLeft size={13} /> BACK TO CONSOLE</a>
         <h1>Operator's Guide</h1>
         <p className="guide-lede">
           Naventra is an AI-native air traffic control console. It ingests <b>real, live ADS-B

@@ -284,7 +284,56 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
       ctx.stroke();
       ctx.restore();
 
+      // -- close-in schematic apron/terminals (deep zoom only). Drawn under the
+      // runways. Terminal footprints aren't in public data, so these are clearly
+      // schematic blocks arranged around the field, sized by real gate counts.
+      const closeUp = rangeNm <= 5;
+      if (closeUp && ap.terminals?.length) {
+        const terms = ap.terminals;
+        ctx.textAlign = 'center';
+        terms.forEach((term, i) => {
+          const ang = (i / terms.length) * Math.PI * 2 - Math.PI / 2;
+          const ring = 0.34 * scale; // ~0.34nm from field center
+          const tx = cx + Math.cos(ang) * ring;
+          const ty = cy + Math.sin(ang) * ring;
+          const gates = term.gates?.length || 4;
+          const w = Math.min(46, 12 + gates * 1.6);
+          const h = 11;
+          ctx.save();
+          ctx.translate(tx, ty);
+          ctx.rotate(ang + Math.PI / 2);
+          ctx.fillStyle = 'rgba(76, 201, 240, 0.10)';
+          ctx.strokeStyle = 'rgba(76, 201, 240, 0.42)';
+          ctx.setLineDash([3, 2]);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.rect(-w / 2, -h / 2, w, h);
+          ctx.fill();
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // gate ticks along the pier
+          ctx.strokeStyle = 'rgba(76, 201, 240, 0.5)';
+          const gshow = Math.min(gates, Math.floor(w / 4));
+          for (let g = 0; g < gshow; g++) {
+            const gx = -w / 2 + 3 + (g * (w - 6)) / Math.max(1, gshow - 1);
+            ctx.beginPath();
+            ctx.moveTo(gx, h / 2);
+            ctx.lineTo(gx, h / 2 + 3);
+            ctx.stroke();
+          }
+          ctx.restore();
+          ctx.fillStyle = 'rgba(143, 166, 177, 0.9)';
+          ctx.font = '600 9px "IBM Plex Mono", monospace';
+          ctx.fillText(term.name, tx, ty + 3);
+        });
+        ctx.textAlign = 'left';
+        ctx.fillStyle = 'rgba(82, 100, 110, 0.9)';
+        ctx.font = '8px "IBM Plex Mono", monospace';
+        ctx.fillText('APRON · SCHEMATIC', cx - radius + 8, cy + radius - 8);
+      }
+
       // -- runways + extended centerlines
+      const rwyWpx = Math.max(3, (200 / FT_PER_NM) * scale); // real ~200ft width
       for (const rwy of rwys) {
         const halfNm = rwy.lenFt / FT_PER_NM / 2;
         // screen direction of the runway axis; y grows downward, hdg 0 = up
@@ -309,26 +358,73 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
           ctx.setLineDash([]);
         }
 
-        ctx.strokeStyle = rwy.status === 'X-WIND' ? 'rgba(255, 180, 84, 0.9)' : 'rgba(217, 230, 236, 0.85)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        ctx.lineTo(bx, by);
-        ctx.stroke();
+        if (closeUp) {
+          // realistic paved ribbon with centerline stripes and threshold labels
+          const pdx = -sdy, pdy = sdx, hw = rwyWpx / 2;
+          ctx.fillStyle = rwy.status === 'X-WIND' ? 'rgba(96, 74, 40, 0.95)' : 'rgba(36, 47, 57, 0.98)';
+          ctx.strokeStyle = 'rgba(190, 208, 218, 0.55)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(ax + pdx * hw, ay + pdy * hw);
+          ctx.lineTo(bx + pdx * hw, by + pdy * hw);
+          ctx.lineTo(bx - pdx * hw, by - pdy * hw);
+          ctx.lineTo(ax - pdx * hw, ay - pdy * hw);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          // dashed centerline
+          ctx.setLineDash([6, 6]);
+          ctx.strokeStyle = 'rgba(232, 232, 180, 0.55)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // both threshold designators, each at its own runway end
+          ctx.font = '600 10px "IBM Plex Mono", monospace';
+          ctx.textAlign = 'center';
+          for (const end of rwy.ends) {
+            const hE = (parseInt(end, 10) || 0) * 10;
+            const tdx = Math.sin((hE + 180) * Math.PI / 180);
+            const tdy = -Math.cos((hE + 180) * Math.PI / 180);
+            const tx = ox + tdx * halfNm * scale;
+            const ty = oy + tdy * halfNm * scale;
+            // threshold bar
+            ctx.strokeStyle = 'rgba(232, 238, 242, 0.85)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(tx + pdx * hw, ty + pdy * hw);
+            ctx.lineTo(tx - pdx * hw, ty - pdy * hw);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(217, 230, 236, 0.95)';
+            ctx.fillText(end, tx + tdx * 12, ty + tdy * 12 + 3);
+          }
+          ctx.textAlign = 'left';
+        } else {
+          ctx.strokeStyle = rwy.status === 'X-WIND' ? 'rgba(255, 180, 84, 0.9)' : 'rgba(217, 230, 236, 0.85)';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+          ctx.stroke();
 
-        if (rangeNm <= 20) {
-          ctx.fillStyle = 'rgba(143, 166, 177, 0.9)';
-          ctx.font = '9px "IBM Plex Mono", monospace';
-          ctx.fillText(rwy.activeEnd, ax - sdx * 14 - 8, ay - sdy * 14 + 3);
+          if (rangeNm <= 20) {
+            ctx.fillStyle = 'rgba(143, 166, 177, 0.9)';
+            ctx.font = '9px "IBM Plex Mono", monospace';
+            ctx.fillText(rwy.activeEnd, ax - sdx * 14 - 8, ay - sdy * 14 + 3);
+          }
         }
       }
 
-      // -- airport symbol
-      ctx.strokeStyle = 'rgba(217, 230, 236, 0.7)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 5, 0, Math.PI * 2);
-      ctx.stroke();
+      // -- airport symbol (hidden at deep zoom where the field fills the scope)
+      if (!closeUp) {
+        ctx.strokeStyle = 'rgba(217, 230, 236, 0.7)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
       // -- trails sampling (once per ~1.8s, dead-reckoned)
       const sampleTrails = now - lastTrailSample > 1800;

@@ -229,8 +229,26 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
     scene.add(rwyGroup);
     let rwySignature = '';
 
-    function rebuildRunways(rwys, k) {
+    function rebuildRunways(rwys, k, ap, rangeNm) {
       rwyGroup.clear();
+      // schematic terminal blocks on the apron at deep zoom (footprints aren't
+      // in public data — arranged around the field, sized by real gate counts)
+      if (rangeNm <= 5 && ap?.terminals?.length) {
+        const terms = ap.terminals;
+        terms.forEach((term, i) => {
+          const ang = (i / terms.length) * Math.PI * 2 - Math.PI / 2;
+          const ring = 0.34 * k;
+          const gates = term.gates?.length || 4;
+          const w = Math.min(0.9 * k, (0.02 + gates * 0.004) * k);
+          const blk = new THREE.Mesh(
+            new THREE.BoxGeometry(Math.max(0.5, w), 0.16, Math.max(0.4, 0.05 * k)),
+            new THREE.MeshBasicMaterial({ color: 0x4cc9f0, transparent: true, opacity: 0.28 })
+          );
+          blk.position.set(Math.cos(ang) * ring, 0.02, Math.sin(ang) * ring);
+          blk.rotation.y = -ang;
+          rwyGroup.add(blk);
+        });
+      }
       for (const rwy of rwys) {
         const lenU = (rwy.lenFt / FT_PER_NM) * k;
         const hdg = (rwy.activeHdg * Math.PI) / 180;
@@ -368,7 +386,7 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
       }
 
       const sig = ap.icao + rangeNm + rwys.map((r) => r.activeEnd + r.status).join('');
-      if (sig !== rwySignature) { rwySignature = sig; rebuildRunways(rwys, k); }
+      if (sig !== rwySignature) { rwySignature = sig; rebuildRunways(rwys, k, ap, rangeNm); }
 
       sweepGroup.rotation.y = -((now % SWEEP_PERIOD_MS) / SWEEP_PERIOD_MS) * Math.PI * 2;
 

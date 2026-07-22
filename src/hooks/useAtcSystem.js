@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AIRPORTS } from '../data/airports.js';
 import { fetchLiveTraffic } from '../lib/adsb.js';
 import { fetchMetar } from '../lib/weather.js';
+import { fetchTaf } from '../lib/forecast.js';
+import { buildOutlook } from '../engine/forecast.js';
 import { SimEngine } from '../lib/sim.js';
 import { allocateRunways, annotateAircraft, detectConflicts, generateEvents, computeKpis, inferActiveArrivals, departureEnd } from '../engine/atc.js';
 import { PredictionTracker } from '../engine/predictions.js';
@@ -41,6 +43,7 @@ export function useAtcSystem() {
   const [scorecard, setScorecard] = useState(null);
   const [globalScorecard, setGlobalScorecard] = useState(null);
   const [globalTotals, setGlobalTotals] = useState(null); // aggregate across all hubs
+  const [forecast, setForecast] = useState(null);
 
   const airport = AIRPORTS[icao];
 
@@ -228,6 +231,21 @@ export function useAtcSystem() {
     return () => { cancelled = true; clearInterval(t); };
   }, [icao, airport, pushEvents]);
 
+  // Forecast loop — TAF is projected into a runway-config + disruption-risk
+  // outlook. TAFs update a few times a day, so a slow poll (10 min) is plenty.
+  useEffect(() => {
+    let cancelled = false;
+    setForecast(null);
+    async function updateTaf() {
+      const taf = await fetchTaf(icao);
+      if (cancelled) return;
+      setForecast(taf ? { ...taf, outlook: buildOutlook(airport, taf.periods) } : { periods: [], outlook: [] });
+    }
+    updateTaf();
+    const t = setInterval(updateTaf, 10 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [icao, airport]);
+
   // Traffic loop — live with failover, sim fallback.
   useEffect(() => {
     const r = ref.current;
@@ -304,7 +322,7 @@ export function useAtcSystem() {
     airport, icao, setIcao,
     mode, source, forceSim, setForceSim,
     weather, aircraft, runways, conflicts, decisions, comms, kpis, opsStats,
-    scorecard: shownScorecard, scoreScope, globalTotals,
+    scorecard: shownScorecard, scoreScope, globalTotals, forecast,
     selected, selectedId, setSelectedId,
   };
 }

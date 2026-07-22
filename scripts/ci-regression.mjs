@@ -15,12 +15,13 @@ globalThis.localStorage = {
   setItem(k, v) { this._d[k] = v; },
 };
 
-const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior }] = await Promise.all([
+const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior }, { buildOutlook }] = await Promise.all([
   import('../src/lib/sim.js'),
   import('../src/data/airports.js'),
   import('../src/engine/atc.js'),
   import('../src/engine/predictions.js'),
   import('../src/engine/learning.js'),
+  import('../src/engine/forecast.js'),
 ]);
 
 let failures = 0;
@@ -65,6 +66,20 @@ for (const ap of Object.values(AIRPORTS)) {
   }
 }
 check('airport data integrity', failures === 0 || true); // summarized above
+
+// Forecast outlook: calm should read LOW risk, a storm HIGH, and the config flip
+// must be detected when the wind swings the runways.
+{
+  const ap = AIRPORTS.KJFK;
+  const now = Date.now();
+  const out = buildOutlook(ap, [
+    { from: now, to: now + 3.6e6, windDir: 250, windKt: 8, gustKt: null, visibSm: 6, ceilingFt: 6000 },
+    { from: now + 3.6e6, to: now + 7.2e6, windDir: 50, windKt: 24, gustKt: 38, visibSm: 0.5, ceilingFt: 300 },
+  ]);
+  check('forecast calm = LOW risk', out[0].risk.level === 'LOW', `${out[0].risk.pct}%`);
+  check('forecast storm = HIGH risk', out[1].risk.level === 'HIGH', `${out[1].risk.pct}%`);
+  check('forecast produces a config label', !!out[0].config && out[0].config !== '—', out[0].config);
+}
 
 if (failures) {
   console.error(`\n${failures} regression check(s) failed`);

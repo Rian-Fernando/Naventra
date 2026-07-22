@@ -17,6 +17,7 @@
     { "source": "/proxy/wx/:path*", "destination": "https://aviationweather.gov/:path*" },
     { "source": "/proxy/adsblol/:path*", "destination": "https://api.adsb.lol/:path*" },
     { "source": "/proxy/adsbfi/:path*", "destination": "https://opendata.adsb.fi/:path*" },
-    { "source": "/guide", "destination": "/index.html" }
+    { "source": "/guide", "destination": "/index.html" },
+    { "source": "/live", "destination": "/index.html" }
   ]
 }

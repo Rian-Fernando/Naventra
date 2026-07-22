@@ -61,10 +61,14 @@ body {
 
 .main {
   display: grid;
-  grid-template-columns: 302px minmax(0, 1fr) 344px;
+  /* Side widths come from --cw-*, set inline only once the user drags a column
+     gutter; otherwise the per-breakpoint fallbacks below keep the old responsive
+     behavior exactly. */
+  grid-template-columns: var(--cw-left, 302px) minmax(0, 1fr) var(--cw-right, 344px);
   gap: 8px;
   min-height: 0;
   min-width: 0;
+  position: relative; /* anchor for the column resizers */
 }
 
 .col {
@@ -89,6 +93,82 @@ body {
    later `.panel { min-height: 0 }` on specificity.) */
 .panel.feed-panel { min-height: 150px; }
 .panel.score-panel, .panel.wx-panel, .panel.conflict-panel { flex-shrink: 0; }
+
+/* --------------------------------------------------- resizable panels ---- */
+/* Each panel is wrapped in .rpanel so it can be resized (bottom grip) and
+   collapsed (chevron / double-click header). Default flex is content-height;
+   a `grow` prop restores fill for the one flexible panel per column. */
+.rpanel { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 0 0 auto; }
+.rpanel > .panel { flex: 1 1 auto; min-height: 0; }
+.rpanel.sized > .panel { max-height: none !important; height: 100%; }
+.rpanel.collapsed { flex: none !important; }
+.rpanel.collapsed > .panel { max-height: none !important; }
+.rpanel.collapsed > .panel > *:not(.panel-head) { display: none; }
+.rpanel.collapsed .panel-head { border-bottom: none; }
+
+.rpanel-toggle {
+  position: absolute; top: 6px; right: 8px; width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px; border: 1px solid var(--line-bright);
+  background: rgba(8, 13, 18, 0.9); color: var(--text-dim);
+  cursor: pointer; opacity: 0; transition: opacity 0.15s, color 0.15s, border-color 0.15s; z-index: 7;
+}
+.rpanel:hover .rpanel-toggle, .rpanel.collapsed .rpanel-toggle { opacity: 1; }
+.rpanel-toggle:hover { color: var(--cyan); border-color: var(--cyan-dim); }
+
+.rpanel-grip { position: absolute; left: 0; right: 0; bottom: -4px; height: 9px; cursor: ns-resize; z-index: 7; }
+.rpanel-grip::after {
+  content: ''; position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%);
+  width: 36px; height: 3px; border-radius: 2px; background: var(--line-bright);
+  opacity: 0; transition: opacity 0.15s, background 0.15s;
+}
+.rpanel:hover .rpanel-grip::after { opacity: 0.65; }
+.rpanel-grip:hover::after { background: var(--cyan); opacity: 1; }
+
+/* draggable column-width gutters (overlaid on the grid gaps) */
+.col-resizer { position: absolute; top: 0; bottom: 0; width: 10px; cursor: col-resize; z-index: 8; }
+.col-resizer-left { margin-left: -5px; }
+.col-resizer-right { margin-right: -5px; }
+.col-resizer::after {
+  content: ''; position: absolute; top: 8px; bottom: 8px; left: 50%; transform: translateX(-50%);
+  width: 2px; border-radius: 2px; background: var(--line-bright); opacity: 0; transition: opacity 0.15s, background 0.15s;
+}
+.col-resizer:hover::after { opacity: 1; background: var(--cyan); }
+@media (max-width: 1080px) { .col-resizer { display: none; } }
+
+/* ------------------------------------------------------ weather outlook -- */
+.forecast-panel .panel-body { padding: 6px 8px 8px; }
+.fc-flip {
+  display: flex; align-items: center; gap: 6px; margin: 2px 2px 8px; padding: 6px 9px;
+  border: 1px solid rgba(255, 180, 84, 0.4); background: rgba(255, 180, 84, 0.08);
+  border-radius: 5px; color: var(--amber); font-size: 10.5px;
+}
+.fc-flip b { color: var(--text); }
+.fc-row {
+  display: grid; grid-template-columns: 46px 1fr auto; gap: 8px; align-items: center;
+  padding: 7px 4px; border-bottom: 1px solid var(--line);
+}
+.fc-row.flip { background: rgba(255, 180, 84, 0.05); }
+.fc-time { font-family: var(--font-mono); font-size: 10px; color: var(--text); line-height: 1.3; }
+.fc-time span { display: block; color: var(--muted); font-size: 8.5px; }
+.fc-cfg { display: flex; align-items: center; gap: 6px; }
+.fc-cfg b { font-family: var(--font-display); font-size: 15px; letter-spacing: 0.04em; color: var(--text); }
+.fc-wind { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-dim); }
+.fc-reasons { font-size: 9px; color: var(--muted); margin-top: 2px; }
+.fc-risk {
+  display: flex; align-items: center; gap: 3px; font-family: var(--font-display);
+  font-size: 15px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--line-bright);
+}
+.fc-risk.green { color: var(--green); border-color: var(--green-dim); background: rgba(61, 220, 151, 0.07); }
+.fc-risk.amber { color: var(--amber); border-color: rgba(255, 180, 84, 0.4); background: rgba(255, 180, 84, 0.07); }
+.fc-risk.red { color: var(--red); border-color: rgba(255, 92, 92, 0.45); background: rgba(255, 92, 92, 0.09); }
+.fc-foot { font-size: 8.5px; color: var(--muted); line-height: 1.5; padding: 8px 2px 2px; }
+.fc-foot a { color: var(--cyan-dim); }
+
+.boot-splash {
+  display: flex; align-items: center; justify-content: center; height: 100vh;
+  color: var(--text-dim); font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.1em;
+}
 
 .panel {
   background: linear-gradient(180deg, var(--panel) 0%, var(--bg-raised) 100%);
@@ -1148,7 +1228,7 @@ body {
 
 /* Large laptops: tighten side columns + header so nothing clips. */
 @media (max-width: 1460px) {
-  .main { grid-template-columns: 280px minmax(0, 1fr) 320px; }
+  .main { grid-template-columns: var(--cw-left, 280px) minmax(0, 1fr) var(--cw-right, 320px); }
   .header { gap: 10px; }
   .kpi { min-width: 62px; padding: 4px 8px; }
   .kpi b { font-size: 16px; }
@@ -1159,7 +1239,7 @@ body {
    lowest-priority KPIs (Departures, Ground — still on strip tabs) and the
    brand subtitle; keep Tracked / Arrivals / Conflicts / AI Score. */
 @media (max-width: 1320px) {
-  .main { grid-template-columns: 258px minmax(0, 1fr) 300px; }
+  .main { grid-template-columns: var(--cw-left, 258px) minmax(0, 1fr) var(--cw-right, 300px); }
   .brand-sub { display: none; }
   .kpi.kpi-lo { display: none; }
   .clockbox .lbl { display: none; }
@@ -1167,7 +1247,7 @@ body {
 }
 
 @media (max-width: 1120px) {
-  .main { grid-template-columns: 236px minmax(0, 1fr) 280px; }
+  .main { grid-template-columns: var(--cw-left, 236px) minmax(0, 1fr) var(--cw-right, 280px); }
   .livebtn .livebtn-src { display: none; }
   .facility select { max-width: 96px; }
   .kpi.kpi-mid { display: none; } /* keep Tracked + Conflicts + AI Score */

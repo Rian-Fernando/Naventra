@@ -55,8 +55,8 @@ export default function RadarPanel(props) {
             ))}
           </div>
           <div className="rc-group">
-            {[10, 20, 40, 80].map((r) => (
-              <button key={r} className={range === r ? 'on' : ''} onClick={() => setRange(r)}>{r}</button>
+            {[2, 5, 10, 20, 40, 80].map((r) => (
+              <button key={r} className={range === r ? 'on' : ''} onClick={() => setRange(r)} title={`${r} nm range`}>{r}</button>
             ))}
           </div>
           <div className="rc-group">

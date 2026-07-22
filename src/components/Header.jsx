@@ -22,13 +22,13 @@ export default function Header({ airport, icao, setIcao, mode, source, forceSim,
       {view && !onGuide && (
         <ConsoleMenu prefs={view.prefs} togglePanel={view.togglePanel} applyPreset={view.applyPreset} reset={view.reset} />
       )}
-      <div className="brand">
+      <a className="brand" href="/" title="Naventra home" style={{ textDecoration: 'none' }}>
         <img className="brand-logo" src="/naventra-mark.svg" alt="Naventra — control tower in a radar sweep" width="30" height="30" />
         <div>
           <div className="brand-name">Naventra</div>
           <div className="brand-sub">AI Air Traffic Command</div>
         </div>
-      </div>
+      </a>
 
       <div className="facility">
         <MapPin size={13} color="var(--green)" />
@@ -64,7 +64,7 @@ export default function Header({ airport, icao, setIcao, mode, source, forceSim,
         <span className="mono-sm livebtn-src" style={{ letterSpacing: 0 }}>{source ? `· ${source}` : ''}</span>
       </button>
 
-      <a className={`nav-link ${onGuide ? 'on' : ''}`} href={onGuide ? '/' : '/guide'}>
+      <a className={`nav-link ${onGuide ? 'on' : ''}`} href={onGuide ? '/live' : '/guide'}>
         <BookOpen size={12} /> {onGuide ? 'CONSOLE' : 'GUIDE'}
       </a>
       <a className="nav-link nav-portfolio" href="https://rianfernando.com" target="_blank" rel="noopener" title="Built by Rian Fernando · rianfernando.com">
