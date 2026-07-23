@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { PlaneLanding, PlaneTakeoff, Plane } from 'lucide-react';
 import { radioName } from '../engine/atc.js';
-import { fmtAlt, distNm } from '../lib/geo.js';
+import { distNm } from '../lib/geo.js';
 import { fetchRoute, getRoute } from '../lib/route.js';
 import { typicalSeats } from '../lib/aircraftMeta.js';
+import { useSettings } from '../hooks/useSettings.jsx';
+import { fmtAltitude, fmtSpeed, fmtDist } from '../lib/units.js';
 
 // Format minutes as "4h 12m" / "38m".
 function fmtDur(min) {
@@ -21,6 +23,7 @@ const apAsEp = (ap) => ({ iata: ap.iata, icao: ap.icao, name: ap.name, city: ap.
 // Floating card over the radar for the selected track.
 export default function AircraftDetail({ aircraft, airport, onClose }) {
   const [route, setRoute] = useState(null);
+  const { settings } = useSettings();
   const cs = aircraft?.callsign;
 
   useEffect(() => {
@@ -61,18 +64,18 @@ export default function AircraftDetail({ aircraft, airport, onClose }) {
 
   const rows = [
     ['Phase', a.phase],
-    ['Altitude', a.onGround ? 'ON GROUND' : fmtAlt(a.altFt)],
-    ['Ground speed', `${Math.round(a.gs)} kt`],
+    ['Altitude', a.onGround ? 'ON GROUND' : fmtAltitude(a.altFt, settings.altitude)],
+    ['Ground speed', fmtSpeed(a.gs, settings.speed)],
     ['Track', `${Math.round(a.track)}°`],
     ['V/S', `${a.vs > 0 ? '+' : ''}${Math.round(a.vs)} fpm`],
-    ['Distance to field', `${a.distNm.toFixed(1)} nm`],
+    ['Distance to field', fmtDist(a.distNm, settings.distance)],
     a.seq != null ? ['Landing seq', `#${a.seq}`] : null,
     a.runway ? ['Runway', a.runway] : null,
     a.gate ? ['Stand', a.gate] : null,
     a.etaMin != null && a.phase !== 'DEPARTURE' ? ['ETA field', fmtDur(a.etaMin)] : null,
     ete ? ['ETE to dest', ete] : null,
     arrClock && ete ? ['Est. arrival', arrClock] : null,
-    distToDest ? ['Dist to dest', `${Math.round(distToDest)} nm`] : null,
+    distToDest ? ['Dist to dest', fmtDist(distToDest, settings.distance, 0)] : null,
     ['Registration', a.reg || '—'],
     seats ? ['Typical seats', `~${seats}`] : null,
     ['Squawk', a.squawk || '—'],

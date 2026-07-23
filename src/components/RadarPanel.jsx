@@ -6,6 +6,7 @@ import SearchBox from './SearchBox.jsx';
 import WeatherFX from './WeatherFX.jsx';
 import { makeVisible, presentAirlines, emergencyInfo } from '../lib/filters.js';
 import { classifyWeather } from '../lib/weatherFx.js';
+import { useSettings } from '../hooks/useSettings.jsx';
 
 // Legend rows double as category filter toggles. `key` maps to prefs.filters.
 const LEGEND = [
@@ -21,6 +22,7 @@ const LEGEND = [
 export default function RadarPanel(props) {
   const { airport, mode, aircraft, conflicts, view, weather } = props;
   const wxfx = classifyWeather(weather);
+  const { settings } = useSettings();
   const scope = view?.prefs.radarView || '3D';
   const setScope = view?.setRadarView || (() => {});
   const [range, setRange] = useState(40);
@@ -36,7 +38,7 @@ export default function RadarPanel(props) {
   // Emergencies are always surfaced, regardless of category filters.
   const emergencies = aircraft.map((ac) => ({ ac, info: emergencyInfo(ac) })).filter((e) => e.info);
 
-  const viewProps = { ...props, aircraft: shownAircraft, conflicts: shownConflicts, range, labels, showTrails };
+  const viewProps = { ...props, aircraft: shownAircraft, conflicts: shownConflicts, range, labels, showTrails, units: settings };
 
   return (
     <div className="panel radar-panel">

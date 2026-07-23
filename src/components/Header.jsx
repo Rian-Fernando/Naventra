@@ -1,20 +1,25 @@
 import { useEffect, useState } from 'react';
-import { MapPin, BookOpen, ExternalLink } from 'lucide-react';
+import { MapPin, BookOpen, ExternalLink, Sliders } from 'lucide-react';
 import { AIRPORT_LIST } from '../data/airports.js';
 import { TRACKED_HUBS, trackerConfigured } from '../lib/globalModel.js';
+import { useSettings } from '../hooks/useSettings.jsx';
 import ConsoleMenu from './ConsoleMenu.jsx';
+import SettingsModal from './SettingsModal.jsx';
 
 export default function Header({ airport, icao, setIcao, mode, source, forceSim, setForceSim, kpis, scorecard, onGuide, view }) {
   const [now, setNow] = useState(new Date());
+  const [showSettings, setShowSettings] = useState(false);
+  const { settings } = useSettings();
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  const utc = now.toISOString().slice(11, 19);
+  const h12 = settings.clock === '12h';
+  const utc = h12 ? now.toLocaleTimeString('en-US', { timeZone: 'UTC', hour12: true }) : now.toISOString().slice(11, 19);
   let local = '--:--:--';
   try {
-    local = now.toLocaleTimeString('en-GB', { timeZone: airport.tz, hour12: false });
+    local = now.toLocaleTimeString(h12 ? 'en-US' : 'en-GB', { timeZone: airport.tz, hour12: h12 });
   } catch { /* unknown tz — keep placeholder */ }
 
   return (
@@ -64,6 +69,12 @@ export default function Header({ airport, icao, setIcao, mode, source, forceSim,
         <span className="mono-sm livebtn-src" style={{ letterSpacing: 0 }}>{source ? `· ${source}` : ''}</span>
       </button>
 
+      {!onGuide && (
+        <button className="nav-link" onClick={() => setShowSettings(true)} title="Display settings — units & clock">
+          <Sliders size={12} /> <span className="nav-label">SETTINGS</span>
+        </button>
+      )}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       <a className={`nav-link ${onGuide ? 'on' : ''}`} href={onGuide ? '/live' : '/guide'}>
         <BookOpen size={12} /> {onGuide ? 'CONSOLE' : 'GUIDE'}
       </a>

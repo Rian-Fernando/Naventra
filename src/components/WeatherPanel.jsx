@@ -1,7 +1,10 @@
 import { CloudSun } from 'lucide-react';
 import { atisLetter } from '../lib/weather.js';
+import { useSettings } from '../hooks/useSettings.jsx';
+import { fmtTemp, fmtSpeed, speedUnitLabel } from '../lib/units.js';
 
 export default function WeatherPanel({ weather, airport }) {
+  const { settings } = useSettings();
   if (!weather) {
     return (
       <div className="panel wx-panel">
@@ -25,8 +28,8 @@ export default function WeatherPanel({ weather, airport }) {
       </div>
       <div className="wx-grid">
         <div className="wx-cell">
-          <div className="v">{weather.windDir != null ? `${String(weather.windDir).padStart(3, '0')}°` : 'VRB'} / {weather.windKt}{weather.gustKt ? `G${weather.gustKt}` : ''}</div>
-          <div className="k">Wind kt</div>
+          <div className="v">{weather.windDir != null ? `${String(weather.windDir).padStart(3, '0')}°` : 'VRB'} / {fmtSpeed(weather.windKt, settings.speed, false)}{weather.gustKt ? `G${fmtSpeed(weather.gustKt, settings.speed, false)}` : ''}</div>
+          <div className="k">Wind {speedUnitLabel(settings.speed)}</div>
         </div>
         <div className="wx-cell">
           <div className="v">{weather.visib}<span style={{ fontSize: 10 }}>SM</span></div>
@@ -37,7 +40,7 @@ export default function WeatherPanel({ weather, airport }) {
           <div className="k">Altimeter</div>
         </div>
         <div className="wx-cell">
-          <div className="v">{weather.tempC ?? '—'}° / {weather.dewpC ?? '—'}°</div>
+          <div className="v">{fmtTemp(weather.tempC, settings.temp)} / {fmtTemp(weather.dewpC, settings.temp)}</div>
           <div className="k">Temp / Dew</div>
         </div>
         <div className="wx-cell">

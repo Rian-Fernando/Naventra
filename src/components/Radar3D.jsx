@@ -2,9 +2,10 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { toLocalNm, deadReckon, fmtFL } from '../lib/geo.js';
+import { toLocalNm, deadReckon } from '../lib/geo.js';
 import { iconKind } from '../lib/aircraftIcon.js';
 import { emergencyInfo } from '../lib/filters.js';
+import { fmtAltScope, fmtSpeed } from '../lib/units.js';
 
 // Merge mixed primitives: ExtrudeGeometry is non-indexed while Box/Cylinder/
 // Sphere are indexed, so normalise everything to non-indexed first.
@@ -139,10 +140,10 @@ function makeMaterials() {
   return mats;
 }
 
-export default function Radar3D({ airport, aircraft, conflicts, runways, selectedId, onSelect, range, labels, showTrails, onUnavailable }) {
+export default function Radar3D({ airport, aircraft, conflicts, runways, selectedId, onSelect, range, labels, showTrails, units, onUnavailable }) {
   const wrapRef = useRef(null);
   const dataRef = useRef({});
-  dataRef.current = { airport, aircraft, conflicts, runways, selectedId, range, labels, showTrails };
+  dataRef.current = { airport, aircraft, conflicts, runways, selectedId, range, labels, showTrails, units };
 
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -375,7 +376,7 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
     let lastIcao = null;
 
     const animate = () => {
-      const { airport: ap, aircraft: acs, conflicts: confl, runways: rwys, selectedId: selId, range: rangeNm, labels: labelMode, showTrails: trailsOn } = dataRef.current;
+      const { airport: ap, aircraft: acs, conflicts: confl, runways: rwys, selectedId: selId, range: rangeNm, labels: labelMode, showTrails: trailsOn, units: u } = dataRef.current;
       const now = Date.now();
       const k = RADIUS / rangeNm;
       const { width, height } = wrap.getBoundingClientRect();
@@ -546,7 +547,7 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
         octx.font = '9px "IBM Plex Mono", monospace';
         octx.fillStyle = 'rgba(143,166,177,0.85)';
         const vsArrow = ac.vs > 250 ? '↑' : ac.vs < -250 ? '↓' : '';
-        octx.fillText(`${ac.onGround ? 'GND' : fmtFL(ac.altFt)}${vsArrow} ${Math.round(ac.gs)}kt`, sx + 6, sy - 2);
+        octx.fillText(`${fmtAltScope(ac.altFt, u?.altitude, ac.onGround)}${vsArrow} ${fmtSpeed(ac.gs, u?.speed)}`, sx + 6, sy - 2);
       }
 
       raf = requestAnimationFrame(animate);

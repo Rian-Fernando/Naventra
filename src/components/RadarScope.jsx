@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { toLocalNm, deadReckon, fmtFL } from '../lib/geo.js';
 import { iconKind } from '../lib/aircraftIcon.js';
 import { emergencyInfo } from '../lib/filters.js';
+import { fmtAltScope, fmtSpeed } from '../lib/units.js';
 
 const ZMIN = 1, ZMAX = 12;
 const clampZ = (z) => Math.max(ZMIN, Math.min(ZMAX, z));
@@ -143,20 +144,20 @@ function drawIcon(ctx, kind, x, y, track, size, spin = 0) {
 }
 
 // Classic 2D top-down scope. Controlled by RadarPanel (range/labels/trails).
-export default function RadarScope({ airport, aircraft, conflicts, runways, selectedId, onSelect, range, labels, showTrails }) {
+export default function RadarScope({ airport, aircraft, conflicts, runways, selectedId, onSelect, range, labels, showTrails, units }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const stateRef = useRef({ aircraft: [], conflicts: [], runways: [], selectedId: null, airport: null });
   const trailsRef = useRef(new Map());
   const rangeRef = useRef(range);
-  const optsRef = useRef({ labels, showTrails });
+  const optsRef = useRef({ labels, showTrails, units });
   const zoomRef = useRef(1);            // scroll-to-zoom multiplier
   const panRef = useRef({ x: 0, y: 0 }); // drag-to-pan offset (screen px)
   const [zoomed, setZoomed] = useState(false);
 
   stateRef.current = { aircraft, conflicts, runways, selectedId, airport };
   rangeRef.current = range;
-  optsRef.current = { labels, showTrails };
+  optsRef.current = { labels, showTrails, units };
 
   const resetView = useCallback(() => { zoomRef.current = 1; panRef.current = { x: 0, y: 0 }; setZoomed(false); }, []);
 
@@ -213,7 +214,7 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
       const { width, height } = wrap.getBoundingClientRect();
       const { aircraft: acs, conflicts: confl, runways: rwys, selectedId: selId, airport: ap } = stateRef.current;
       const rangeNm = rangeRef.current;
-      const { labels: labelMode, showTrails: trailsOn } = optsRef.current;
+      const { labels: labelMode, showTrails: trailsOn, units: u } = optsRef.current;
       const now = Date.now();
 
       const cx = width / 2;
@@ -609,7 +610,7 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
           ctx.fillStyle = 'rgba(143, 166, 177, 0.85)';
           const vsArrow = ac.vs > 250 ? '↑' : ac.vs < -250 ? '↓' : '';
           ctx.fillText(
-            `${ac.onGround ? 'GND' : fmtFL(ac.altFt)}${vsArrow} ${Math.round(ac.gs)}kt${ac.type ? ' ' + ac.type : ''}`,
+            `${fmtAltScope(ac.altFt, u?.altitude, ac.onGround)}${vsArrow} ${fmtSpeed(ac.gs, u?.speed)}${ac.type ? ' ' + ac.type : ''}`,
             lx, ly + 11
           );
           ctx.textAlign = 'left';
@@ -640,6 +641,15 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
     canvas.style.cursor = 'grab';
     let dragging = false, moved = false, sx0 = 0, sy0 = 0, startPan = { x: 0, y: 0 };
 
+    // Keep the scope on screen: cap the pan to one scope-radius of travel per
+    // zoom level, so you can't drag the radar away into empty space.
+    const clampPan = (p, z) => {
+      const rect = canvas.getBoundingClientRect();
+      const r = Math.min(rect.width, rect.height) / 2 - 18;
+      const L = r * z;
+      return { x: Math.max(-L, Math.min(L, p.x)), y: Math.max(-L, Math.min(L, p.y)) };
+    };
+
     const onWheel = (e) => {
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
@@ -649,10 +659,10 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
       const nz = clampZ(old * (e.deltaY < 0 ? 1.12 : 0.892));
       if (nz <= 1.001) { resetView(); return; }
       const k = nz / old;
-      panRef.current = {
+      panRef.current = clampPan({
         x: mx - cx - (mx - cx - panRef.current.x) * k,
         y: my - cy - (my - cy - panRef.current.y) * k,
-      };
+      }, nz);
       zoomRef.current = nz;
       setZoomed(true);
     };
@@ -665,7 +675,7 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
       if (!dragging) return;
       const dx = e.clientX - sx0, dy = e.clientY - sy0;
       if (!moved && Math.hypot(dx, dy) > 4) moved = true;
-      if (moved) { panRef.current = { x: startPan.x + dx, y: startPan.y + dy }; setZoomed(true); }
+      if (moved) { panRef.current = clampPan({ x: startPan.x + dx, y: startPan.y + dy }, zoomRef.current); setZoomed(true); }
     };
     const onUp = (e) => {
       if (!dragging) return;

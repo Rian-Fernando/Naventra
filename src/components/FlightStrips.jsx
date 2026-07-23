@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { PlaneLanding, PlaneTakeoff, CircleDot } from 'lucide-react';
-import { fmtAlt } from '../lib/geo.js';
 import { getRoute } from '../lib/route.js';
 import { emergencyInfo } from '../lib/filters.js';
+import { useSettings } from '../hooks/useSettings.jsx';
+import { fmtAltScope, fmtSpeed, speedUnitLabel, convDist, distUnitLabel } from '../lib/units.js';
 
 const TABS = [
   { key: 'ARR', label: 'Arrivals', icon: PlaneLanding, phases: ['ARRIVAL', 'APPROACH', 'FINAL'] },
@@ -14,6 +15,7 @@ const epMatches = (ep, ap) => !!ep && !!ap && (ep.icao === ap.icao || ep.iata ==
 
 export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect, airline, airport }) {
   const [tab, setTab] = useState('ARR');
+  const { settings } = useSettings();
   const active = TABS.find((t) => t.key === tab);
   const conflictIds = new Set(conflicts.flatMap((c) => [c.a.id, c.b.id]));
 
@@ -71,9 +73,9 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
               </span>
             </div>
             <div className="strip-mid">
-              <span><b>{a.onGround ? 'GND' : fmtAlt(a.altFt)}</b></span>
-              <span><b>{Math.round(a.gs)}</b>kt</span>
-              <span><b>{a.distNm.toFixed(1)}</b>nm</span>
+              <span><b>{fmtAltScope(a.altFt, settings.altitude, a.onGround)}</b></span>
+              <span><b>{fmtSpeed(a.gs, settings.speed, false)}</b>{speedUnitLabel(settings.speed)}</span>
+              <span><b>{convDist(a.distNm, settings.distance).toFixed(1)}</b>{distUnitLabel(settings.distance)}</span>
               {a.etaMin != null && a.phase !== 'DEPARTURE' && <span>ETA <b>{Math.round(a.etaMin)}m</b></span>}
             </div>
             <div className="strip-bot">

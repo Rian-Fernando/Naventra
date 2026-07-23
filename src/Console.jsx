@@ -17,6 +17,7 @@ import AircraftDetail from './components/AircraftDetail.jsx';
 import ScorecardPanel from './components/ScorecardPanel.jsx';
 import ResizablePanel, { ColResizer, RowResizer } from './components/ResizablePanel.jsx';
 import Guide from './pages/Guide.jsx';
+import { SettingsProvider } from './hooks/useSettings.jsx';
 
 // The live console (routes /live and /guide). Kept separate from the marketing
 // landing page so visiting "/" never spins up the ADS-B engine or WebGL radar.
@@ -83,6 +84,7 @@ export default function Console({ route }) {
   const shellStyle = { '--comms-h': `${view.commsH}px` };
 
   return (
+    <SettingsProvider>
     <div className={`shell ${onGuide ? 'shell-guide' : ''} ${!onGuide && panels.comms ? 'has-comms' : ''}`} style={onGuide ? undefined : shellStyle}>
       <Header
         airport={atc.airport} icao={atc.icao} setIcao={atc.setIcao}
@@ -150,5 +152,6 @@ export default function Console({ route }) {
         </>
       )}
     </div>
+    </SettingsProvider>
   );
 }
