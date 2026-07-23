@@ -112,20 +112,23 @@ body {
    collapsed (chevron / double-click header). Default flex is content-height;
    a `grow` prop restores fill for the one flexible panel per column. */
 .rpanel { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 0 0 auto; }
-.rpanel > .panel { flex: 1 1 auto; min-height: 0; }
-/* A flexible (grow) panel keeps a usable floor so it can't be crushed to nothing
-   on short viewports — instead the column overflows and scrolls, and headers
-   never collapse onto each other. */
-.rpanel--fill { min-height: 210px; }
-.rpanel--fill.collapsed, .rpanel--fill.sized { min-height: 0; }
+/* Neutralise the panels' legacy inline flex (flex-basis:0 made them collapse to
+   nothing inside the wrapper, crushing headers). Panels are content-height, so
+   the COLUMN is the single scroll region — you scroll through every panel at
+   once instead of each one trapping the wheel. */
+.rpanel > .panel { flex: 1 1 auto !important; min-height: 0; }
 .rpanel.sized > .panel { max-height: none !important; height: 100%; }
 .rpanel.collapsed { flex: none !important; }
 .rpanel.collapsed > .panel { max-height: none !important; min-height: 0 !important; }
 .rpanel.collapsed > .panel > *:not(.panel-head) { display: none; }
 .rpanel.collapsed .panel-head { border-bottom: none; }
-/* Reserve room at the header's right edge so the collapse toggle never lands on
-   top of a panel's status badge. */
+/* Reserve room at the header's right edge for the collapse toggle, and fade the
+   status badge out whenever the toggle is showing (hover / collapsed) so the two
+   can never occupy the same corner. */
 .rpanel > .panel > .panel-head { padding-right: 30px; }
+.rpanel > .panel > .panel-head .badge { transition: opacity 0.15s; }
+.rpanel:hover > .panel > .panel-head .badge,
+.rpanel.collapsed > .panel > .panel-head .badge { opacity: 0; }
 
 .rpanel-toggle {
   position: absolute; top: 6px; right: 8px; width: 20px; height: 20px;
@@ -937,10 +940,11 @@ body {
 
 .sel-detail {
   position: absolute;
-  left: 10px;
-  top: 10px;
-  z-index: 6;
+  right: 10px;      /* right side — clear of the search box (top-left) */
+  top: 50px;        /* below the radar panel header, not over it */
+  z-index: 7;
   width: 232px;
+  max-width: calc(100% - 20px);
   background: rgba(7, 12, 17, 0.94);
   border: 1px solid var(--green-dim);
   border-radius: 6px;

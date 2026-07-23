@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Radar, Cpu, CloudSun, ShieldAlert, Boxes, Activity, ArrowRight, Github, Check } from 'lucide-react';
 import LandingScene3D from '../components/LandingScene3D.jsx';
+import LandingMiniRadar from '../components/LandingMiniRadar.jsx';
 import { fetchGlobalScorecard } from '../lib/globalModel.js';
 import { AIRPORT_LIST } from '../data/airports.js';
 import '../styles/landing.css';
@@ -95,9 +96,6 @@ export default function Landing() {
 
   const scrollTo = (id) => (e) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); };
   const ticker = (stats?.recent || []).filter((r) => r.items?.length).slice(0, 12);
-  const hudAcc = stats?.recent24?.pct ?? stats?.allTime?.pct ?? null;
-  const last = ticker[0];
-  const lastOk = last ? last.items.filter((i) => i.ok).length >= Math.ceil(last.items.length / 2) : false;
 
   return (
     <div className="lp">
@@ -135,26 +133,7 @@ export default function Landing() {
           </div>
         </div>
 
-        {/* Floating live-data HUD — fills the frame and proves it's live. */}
-        <aside className="lp-hud glass" aria-hidden="true">
-          <div className="lp-hud-head"><span className="lp-hud-dot" /> LIVE · SELF-LEARNING MODEL</div>
-          <div className="lp-hud-acc">
-            <b>{hudAcc != null ? hudAcc : '—'}<span>%</span></b>
-            <span className="lp-hud-acc-l">recent prediction accuracy</span>
-          </div>
-          <div className="lp-hud-rows">
-            <div className="lp-hud-row"><span>Operations graded</span><b>{stats?.allTime?.n != null ? stats.allTime.n.toLocaleString() : '—'}</b></div>
-            <div className="lp-hud-row"><span>Training rows</span><b>{stats?.samples != null ? stats.samples.toLocaleString() : '—'}</b></div>
-            <div className="lp-hud-row"><span>Airports tracked</span><b>{AIRPORT_COUNT}</b></div>
-          </div>
-          {last && (
-            <div className="lp-hud-last">
-              <span>Last graded</span>
-              <div><b>{last.callsign || '——'}</b> <em>{last.airport}</em> <i className={lastOk ? 'ok' : 'no'}>{lastOk ? '✓' : '✗'}</i></div>
-            </div>
-          )}
-          <a className="lp-hud-cta" href="/live">Open the live console <ArrowRight size={13} /></a>
-        </aside>
+        <div className="lp-hero-radar"><LandingMiniRadar /></div>
 
         <div className="lp-scroll-hint" onClick={scrollTo('stats')}><span>SCROLL</span><em>▾</em></div>
       </header>

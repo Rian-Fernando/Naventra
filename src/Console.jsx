@@ -107,7 +107,7 @@ export default function Console({ route }) {
             {leftV && (
               <div className="col">
                 {panels.strips && (
-                  <ResizablePanel id="strips" grow="1 1 0">
+                  <ResizablePanel id="strips">
                     <FlightStrips
                       aircraft={atc.aircraft} conflicts={atc.conflicts} airline={view.prefs.airline}
                       airport={atc.airport} selectedId={atc.selectedId} onSelect={atc.setSelectedId}
@@ -135,7 +135,7 @@ export default function Console({ route }) {
                 {panels.scorecard && <ResizablePanel id="scorecard"><ScorecardPanel scorecard={atc.scorecard} mode={atc.mode} scope={atc.scoreScope} globalTotals={atc.globalTotals} /></ResizablePanel>}
                 {panels.separation && <ResizablePanel id="separation"><ConflictPanel conflicts={atc.conflicts} onSelect={atc.setSelectedId} /></ResizablePanel>}
                 {panels.forecast && <ResizablePanel id="forecast"><ForecastPanel forecast={atc.forecast} airport={atc.airport} runways={atc.runways} /></ResizablePanel>}
-                {panels.feed && <ResizablePanel id="feed" grow="1.4 1 0"><AIDecisionFeed decisions={atc.decisions} /></ResizablePanel>}
+                {panels.feed && <ResizablePanel id="feed"><AIDecisionFeed decisions={atc.decisions} /></ResizablePanel>}
                 {panels.weather && <ResizablePanel id="weather"><WeatherPanel weather={atc.weather} airport={atc.airport} /></ResizablePanel>}
               </div>
             )}

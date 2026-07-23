@@ -107,38 +107,17 @@ body.landing-mode #root { height: auto; min-height: 100%; }
   border: 1px solid var(--line-bright); background: rgba(6, 11, 17, 0.5); backdrop-filter: blur(6px); transition: all 0.16s;
 }
 .lp-cta-ghost:hover { border-color: var(--cyan-dim); color: var(--cyan); }
-/* floating live HUD (fills the hero's right side) */
-.lp-hud {
-  position: absolute; right: clamp(24px, 5vw, 72px); top: 50%; transform: translateY(-50%); z-index: 3;
-  width: 288px; padding: 20px 20px 18px; border-radius: 16px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(76, 201, 240, 0.06);
+/* live mini-radar (fills the hero's right side with real aircraft) */
+.lp-hero-radar { position: absolute; right: clamp(24px, 5vw, 76px); top: 50%; transform: translateY(-50%); z-index: 3; }
+.lp-radar { position: relative; filter: drop-shadow(0 20px 50px rgba(0, 0, 0, 0.55)); }
+.lp-radar canvas { display: block; }
+.lp-radar-cap {
+  display: flex; align-items: center; gap: 7px; justify-content: center; margin-top: 12px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; color: var(--dim, var(--text-dim));
 }
-.lp-hud-head { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.16em; color: var(--cyan); margin-bottom: 16px; }
-.lp-hud-dot { width: 6px; height: 6px; aspect-ratio: 1; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: pulse 1.8s ease-in-out infinite; }
-.lp-hud-acc { display: flex; flex-direction: column; padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
-.lp-hud-acc b { font-family: 'Space Grotesk', sans-serif; font-size: 46px; font-weight: 600; line-height: 1; color: var(--cyan); }
-.lp-hud-acc b span { font-size: 0.5em; color: var(--cyan-dim); }
-.lp-hud-acc-l { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.06em; color: var(--muted); text-transform: uppercase; margin-top: 8px; }
-.lp-hud-rows { display: flex; flex-direction: column; gap: 9px; }
-.lp-hud-row { display: flex; align-items: baseline; justify-content: space-between; font-size: 12.5px; color: var(--text-dim); font-family: system-ui, sans-serif; }
-.lp-hud-row b { font-family: var(--font-mono); font-size: 13px; color: var(--text); }
-.lp-hud-last {
-  margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line);
-  font-size: 11px; color: var(--muted); font-family: system-ui, sans-serif;
-}
-.lp-hud-last > div { margin-top: 4px; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
-.lp-hud-last b { color: var(--text); }
-.lp-hud-last em { color: var(--cyan); font-style: normal; font-size: 10px; }
-.lp-hud-last i { font-style: normal; font-weight: 600; }
-.lp-hud-last i.ok { color: var(--green); }
-.lp-hud-last i.no { color: var(--red); }
-.lp-hud-cta {
-  display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 16px;
-  padding: 9px; border-radius: 9px; text-decoration: none; font-size: 12.5px; font-weight: 600;
-  color: var(--cyan); border: 1px solid var(--cyan-dim); background: rgba(76, 201, 240, 0.06); transition: all 0.16s;
-}
-.lp-hud-cta:hover { background: rgba(76, 201, 240, 0.12); }
-@media (max-width: 1180px) { .lp-hud { display: none; } }
+.lp-radar-cap em { color: var(--muted); font-style: normal; letter-spacing: 0.04em; }
+.lp-radar-dot { width: 6px; height: 6px; aspect-ratio: 1; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.8s ease-in-out infinite; }
+@media (max-width: 1120px) { .lp-hero-radar { display: none; } }
 
 .lp-scroll-hint {
   position: absolute; bottom: 26px; left: clamp(16px, 4vw, 40px); z-index: 3;
