@@ -10,6 +10,13 @@ updates:
         dependency-type: development
     labels:
       - dependencies
+    ignore:
+      # React 19 is a coordinated migration (react + react-dom together, plus
+      # testing), not an automated bump — do it deliberately, not via Dependabot.
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: "/worker"
