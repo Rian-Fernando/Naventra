@@ -11,6 +11,6 @@
     "db:init:remote": "wrangler d1 execute naventra --remote --file=./schema.sql"
   },
   "devDependencies": {
-    "wrangler": "^4.113.0"
+    "wrangler": "^4.114.0"
   }
 }
