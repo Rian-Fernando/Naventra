@@ -28,7 +28,7 @@ function usePathRoute() {
       // Leave in-page hash links (#section) to their own handlers / native scroll.
       if ((a.getAttribute('href') || '').startsWith('#')) return;
       e.preventDefault();
-      window.history.pushState(null, '', a.pathname);
+      window.history.pushState(null, '', a.pathname + a.search);
       setRoute(a.pathname);
       window.scrollTo(0, 0);
     };

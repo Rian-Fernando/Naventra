@@ -107,6 +107,8 @@ body.landing-mode #root { height: auto; min-height: 100%; }
   border: 1px solid var(--line-bright); background: rgba(6, 11, 17, 0.5); backdrop-filter: blur(6px); transition: all 0.16s;
 }
 .lp-cta-ghost:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.lp-tour-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 16px; color: var(--text-dim); font-size: 14px; text-decoration: none; transition: color 0.16s; }
+.lp-tour-link:hover { color: var(--cyan); }
 /* live mini-radar (fills the hero's right side with real aircraft) */
 .lp-hero-radar { position: absolute; right: clamp(24px, 5vw, 76px); top: 50%; transform: translateY(-50%); z-index: 3; }
 .lp-radar { position: relative; filter: drop-shadow(0 20px 50px rgba(0, 0, 0, 0.55)); }

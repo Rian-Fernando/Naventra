@@ -131,6 +131,7 @@ export default function Landing() {
             <a className="lp-cta" href="/live">Launch live console <ArrowRight size={18} /></a>
             <a className="lp-cta-ghost" href="#how" onClick={scrollTo('how')}>See how it works</a>
           </div>
+          <a className="lp-tour-link" href="/live?tour=1">or take a guided tour of the console <ArrowRight size={13} /></a>
         </div>
 
         <div className="lp-hero-radar"><LandingMiniRadar /></div>

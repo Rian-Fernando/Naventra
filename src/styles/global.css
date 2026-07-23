@@ -1179,6 +1179,40 @@ body {
 .sm-reset:hover { color: var(--text); border-color: var(--cyan-dim); }
 .sm-foot > span { font-size: 10px; color: var(--muted); }
 
+/* ------------------------------------------------------- guided tour ---- */
+.tour { position: fixed; inset: 0; z-index: 300; pointer-events: none; }
+.tour-hole {
+  position: fixed; border-radius: 7px; pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(2, 5, 9, 0.74), 0 0 0 1px var(--cyan) inset;
+  border: 1px solid var(--cyan);
+  transition: left 0.28s ease, top 0.28s ease, width 0.28s ease, height 0.28s ease;
+}
+.tour-tip {
+  position: fixed; pointer-events: auto; z-index: 301;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--cyan-dim); border-radius: 10px; padding: 15px 16px 13px;
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.6);
+  transition: top 0.28s ease, left 0.28s ease;
+}
+.tour-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+.tour-badge { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em; color: var(--cyan); }
+.tour-step { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+.tour-tip h4 { font-family: var(--font-display); font-size: 17px; font-weight: 600; letter-spacing: 0.02em; color: var(--text); margin-bottom: 6px; }
+.tour-tip p { font-size: 12.5px; line-height: 1.55; color: var(--text-dim); font-family: system-ui, sans-serif; }
+.tour-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+.tour-skip { background: none; border: none; color: var(--muted); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
+.tour-skip:hover { color: var(--text-dim); }
+.tour-nav { display: flex; align-items: center; gap: 6px; }
+.tour-back, .tour-next {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  border: 1px solid var(--cyan-dim); border-radius: 6px; padding: 6px 11px;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.05em;
+}
+.tour-back { background: none; color: var(--text-dim); padding: 6px 8px; }
+.tour-next { background: linear-gradient(135deg, var(--cyan), #7ad8f5); color: #04070a; border-color: transparent; font-weight: 600; }
+.tour-next:hover { filter: brightness(1.08); }
+.tour-back:hover { color: var(--text); border-color: var(--cyan); }
+
 /* -------------------------------------------------------------- guide --- */
 
 .shell-guide { grid-template-rows: 54px 1fr; }

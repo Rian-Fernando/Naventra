@@ -17,6 +17,7 @@ import AircraftDetail from './components/AircraftDetail.jsx';
 import ScorecardPanel from './components/ScorecardPanel.jsx';
 import ResizablePanel, { ColResizer, RowResizer } from './components/ResizablePanel.jsx';
 import Guide from './pages/Guide.jsx';
+import Tour from './components/Tour.jsx';
 import { SettingsProvider } from './hooks/useSettings.jsx';
 
 // The live console (routes /live and /guide). Kept separate from the marketing
@@ -149,6 +150,7 @@ export default function Console({ route }) {
               <CommsLog comms={atc.comms} airport={atc.airport} />
             </div>
           )}
+          <Tour />
         </>
       )}
     </div>

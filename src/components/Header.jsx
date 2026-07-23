@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MapPin, BookOpen, ExternalLink, Sliders } from 'lucide-react';
+import { MapPin, BookOpen, ExternalLink } from 'lucide-react';
 import { AIRPORT_LIST } from '../data/airports.js';
 import { TRACKED_HUBS, trackerConfigured } from '../lib/globalModel.js';
 import { useSettings } from '../hooks/useSettings.jsx';
@@ -25,7 +25,11 @@ export default function Header({ airport, icao, setIcao, mode, source, forceSim,
   return (
     <header className="header">
       {view && !onGuide && (
-        <ConsoleMenu prefs={view.prefs} togglePanel={view.togglePanel} applyPreset={view.applyPreset} reset={view.reset} />
+        <ConsoleMenu
+          prefs={view.prefs} togglePanel={view.togglePanel} applyPreset={view.applyPreset} reset={view.reset}
+          openSettings={() => setShowSettings(true)}
+          startTour={() => window.dispatchEvent(new Event('nv-tour'))}
+        />
       )}
       <a className="brand" href="/" title="Naventra home" style={{ textDecoration: 'none' }}>
         <img className="brand-logo" src="/naventra-mark.svg" alt="Naventra — control tower in a radar sweep" width="30" height="30" />
@@ -69,11 +73,6 @@ export default function Header({ airport, icao, setIcao, mode, source, forceSim,
         <span className="mono-sm livebtn-src" style={{ letterSpacing: 0 }}>{source ? `· ${source}` : ''}</span>
       </button>
 
-      {!onGuide && (
-        <button className="nav-link" onClick={() => setShowSettings(true)} title="Display settings — units & clock">
-          <Sliders size={12} /> <span className="nav-label">SETTINGS</span>
-        </button>
-      )}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       <a className={`nav-link ${onGuide ? 'on' : ''}`} href={onGuide ? '/live' : '/guide'}>
         <BookOpen size={12} /> {onGuide ? 'CONSOLE' : 'GUIDE'}

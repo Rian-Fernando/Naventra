@@ -47,6 +47,7 @@ export default function ResizablePanel({ id, grow, children }) {
   return (
     <div
       ref={ref}
+      data-tour={id}
       className={`rpanel ${collapsed ? 'collapsed' : ''} ${sized ? 'sized' : ''} ${grow ? 'rpanel--fill' : ''}`}
       style={style}
       onDoubleClick={onDblHead}
