@@ -113,6 +113,11 @@ body {
    a `grow` prop restores fill for the one flexible panel per column. */
 .rpanel { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 0 0 auto; }
 .rpanel > .panel { flex: 1 1 auto; min-height: 0; }
+/* A flexible (grow) panel keeps a usable floor so it can't be crushed to nothing
+   on short viewports — instead the column overflows and scrolls, and headers
+   never collapse onto each other. */
+.rpanel--fill { min-height: 210px; }
+.rpanel--fill.collapsed, .rpanel--fill.sized { min-height: 0; }
 .rpanel.sized > .panel { max-height: none !important; height: 100%; }
 .rpanel.collapsed { flex: none !important; }
 .rpanel.collapsed > .panel { max-height: none !important; min-height: 0 !important; }

@@ -47,7 +47,7 @@ export default function ResizablePanel({ id, grow, children }) {
   return (
     <div
       ref={ref}
-      className={`rpanel ${collapsed ? 'collapsed' : ''} ${sized ? 'sized' : ''}`}
+      className={`rpanel ${collapsed ? 'collapsed' : ''} ${sized ? 'sized' : ''} ${grow ? 'rpanel--fill' : ''}`}
       style={style}
       onDoubleClick={onDblHead}
     >
