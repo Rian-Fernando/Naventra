@@ -234,6 +234,60 @@ export default function LandingScene3D() {
       });
     }
 
+    // ---- helicopters (low, slow, real spinning rotors + beacons) ----------
+    function buildHelicopter() {
+      const g = new THREE.Group();
+      const skin = new THREE.MeshStandardMaterial({ color: 0x1b222c, roughness: 0.42, metalness: 0.55 });
+      const dark = new THREE.MeshStandardMaterial({ color: 0x0b0f14, roughness: 0.6, metalness: 0.4 });
+      const bladeMat = new THREE.MeshStandardMaterial({ color: 0x0a0d12, roughness: 0.5, metalness: 0.3, transparent: true, opacity: 0.55 });
+      const discMat = () => new THREE.MeshBasicMaterial({ color: 0x38495c, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false });
+      // fuselage + cockpit glass
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 18, 14), skin);
+      body.scale.set(1, 0.82, 1.7); g.add(body);
+      const glass = new THREE.Mesh(new THREE.SphereGeometry(0.44, 14, 12), new THREE.MeshStandardMaterial({ color: 0x0c1b28, roughness: 0.08, metalness: 0.3, transparent: true, opacity: 0.72 }));
+      glass.scale.set(0.9, 0.78, 1.05); glass.position.set(0, 0.06, 0.5); g.add(glass);
+      // tail boom + fin + horizontal stabiliser
+      const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.16, 1.7, 8), skin);
+      boom.rotation.x = Math.PI / 2; boom.position.set(0, 0.14, -1.2); g.add(boom);
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.44, 0.32), skin); fin.position.set(0, 0.36, -1.95); g.add(fin);
+      const stab = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.04, 0.22), skin); stab.position.set(0, 0.14, -1.8); g.add(stab);
+      // landing skids
+      for (let s = 0; s < 2; s++) {
+        const sx = s ? 0.34 : -0.34;
+        const skid = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.5, 6), dark);
+        skid.rotation.x = Math.PI / 2; skid.position.set(sx, -0.5, 0.05); g.add(skid);
+        [-0.35, 0.45].forEach((sz) => { const st = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.42, 6), dark); st.position.set(sx, -0.29, sz); g.add(st); });
+      }
+      // mast + main rotor (two crossed blades → 4-tip) with a faint blur disc
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8), dark); mast.position.set(0, 0.52, 0.02); g.add(mast);
+      const rotor = new THREE.Group(); rotor.position.set(0, 0.66, 0.02);
+      for (let b = 0; b < 2; b++) { const bl = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.03, 0.17), bladeMat); bl.rotation.y = b * Math.PI / 2; rotor.add(bl); }
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(1.85, 36), discMat()); disc.rotation.x = -Math.PI / 2; rotor.add(disc); g.add(rotor);
+      // tail rotor (spins about the lateral axis) with its own disc
+      const tail = new THREE.Group(); tail.position.set(0.14, 0.22, -1.98);
+      for (let c = 0; c < 2; c++) { const tb = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.72, 0.06), bladeMat); tb.rotation.z = c * Math.PI / 2; tail.add(tb); }
+      const td = new THREE.Mesh(new THREE.CircleGeometry(0.4, 20), discMat()); td.rotation.y = Math.PI / 2; tail.add(td); g.add(tail);
+      // lights: nav red/green, white tail, blinking red anti-collision beacon
+      const navL = mkSprite(RED, 0.3), navR = mkSprite(GREEN, 0.3), tailW = mkSprite(0xffffff, 0.22);
+      navL.position.set(-0.5, 0, 0.35); navR.position.set(0.5, 0, 0.35); tailW.position.set(0, 0.36, -2.05);
+      const beacon = mkSprite(0xff3b3b, 0.5, 0); beacon.position.set(0, 0.64, -0.2);
+      g.add(navL, navR, tailW, beacon);
+      return { group: g, rotor, tail, beacon };
+    }
+
+    const helis = [];
+    const heliN = reduce ? 1 : 2;
+    for (let hi = 0; hi < heliN; hi++) {
+      const h = buildHelicopter();
+      h.group.scale.setScalar(0.95);
+      scene.add(h.group);
+      helis.push({
+        o: h, dir: hi % 2 === 0 ? 1 : -1,
+        x: hi % 2 === 0 ? -72 : 72, z: -24 - hi * 20, y: 5.5 + hi * 2,
+        speed: 4.5 + hi * 0.7, bob: Math.random() * 6, beaconT: Math.random() * 2, spin: 0, tspin: 0,
+      });
+    }
+
     // ---- postprocessing (gentle bloom) ------------------------------------
     let composer = null;
     try {
@@ -306,6 +360,19 @@ export default function LandingScene3D() {
         const arr = c.trail.geometry.attributes.position.array;
         for (let i = 0; i < c.TN; i++) { const p = c.hist[Math.min(i, c.hist.length - 1)] || c.g.position; arr[i * 3] = p.x; arr[i * 3 + 1] = p.y; arr[i * 3 + 2] = p.z; }
         c.trail.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // helicopters — transit low, rotors spinning, beacon blinking
+      for (const H of helis) {
+        H.x += H.dir * H.speed * dt;
+        if (H.dir > 0 && H.x > 76) H.x = -76;
+        if (H.dir < 0 && H.x < -76) H.x = 76;
+        H.bob += dt;
+        H.o.group.position.set(H.x, H.y + Math.sin(H.bob * 0.8) * 0.4, H.z);
+        H.o.group.rotation.set(-0.08, H.dir > 0 ? -Math.PI / 2 : Math.PI / 2, 0); // nose into travel, slight forward pitch
+        H.spin -= dt * 22; H.o.rotor.rotation.y = H.spin;      // main rotor
+        H.tspin -= dt * 42; H.o.tail.rotation.x = H.tspin;     // tail rotor
+        H.beaconT += dt; H.o.beacon.material.opacity = (H.beaconT % 1.2 < 0.12) ? 1 : 0;
       }
 
       (composer || renderer).render(scene, camera);

@@ -105,7 +105,7 @@ export default function Console({ route }) {
             {leftV && centerV && <ColResizer side="left" view={view} />}
             {rightV && centerV && <ColResizer side="right" view={view} />}
             {leftV && (
-              <div className="col">
+              <div className="col col-side">
                 {panels.strips && (
                   <ResizablePanel id="strips">
                     <FlightStrips
@@ -120,7 +120,7 @@ export default function Console({ route }) {
             )}
 
             {centerV && (
-              <div className="col" style={{ position: 'relative' }}>
+              <div className="col col-center" style={{ position: 'relative' }}>
                 <RadarPanel
                   airport={atc.airport} aircraft={atc.aircraft} conflicts={atc.conflicts}
                   runways={atc.runways} selectedId={atc.selectedId} onSelect={atc.setSelectedId}
@@ -131,7 +131,7 @@ export default function Console({ route }) {
             )}
 
             {rightV && (
-              <div className="col">
+              <div className="col col-side">
                 {panels.scorecard && <ResizablePanel id="scorecard"><ScorecardPanel scorecard={atc.scorecard} mode={atc.mode} scope={atc.scoreScope} globalTotals={atc.globalTotals} /></ResizablePanel>}
                 {panels.separation && <ResizablePanel id="separation"><ConflictPanel conflicts={atc.conflicts} onSelect={atc.setSelectedId} /></ResizablePanel>}
                 {panels.forecast && <ResizablePanel id="forecast"><ForecastPanel forecast={atc.forecast} airport={atc.airport} runways={atc.runways} /></ResizablePanel>}

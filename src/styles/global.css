@@ -92,11 +92,11 @@ body {
   min-width: 0;
 }
 
-/* Side columns scroll as a whole when their panels can't all fit the viewport
-   height (short laptops), so no panel gets starved to zero. The middle radar
-   column always fills its cell and never scrolls. */
-.main > .col:first-child,
-.main > .col:last-child {
+/* Side columns scroll as a whole so you move through all their panels at once;
+   the middle radar column always fills its cell and never scrolls. Targeted by
+   an explicit class because the column resizers sit first in .main, which broke
+   the old :first-child selector (left column silently lost its scroll). */
+.col-side {
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -940,11 +940,14 @@ body {
 
 .sel-detail {
   position: absolute;
-  right: 10px;      /* right side — clear of the search box (top-left) */
-  top: 50px;        /* below the radar panel header, not over it */
+  /* bottom-right — the only free corner (search TL, controls TR, legend BL) */
+  right: 10px;
+  bottom: 12px;
   z-index: 7;
   width: 232px;
   max-width: calc(100% - 20px);
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
   background: rgba(7, 12, 17, 0.94);
   border: 1px solid var(--green-dim);
   border-radius: 6px;
