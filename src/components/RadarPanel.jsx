@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Radar } from 'lucide-react';
+import { Radar, AlertTriangle } from 'lucide-react';
 import RadarScope from './RadarScope.jsx';
 import Radar3D from './Radar3D.jsx';
 import SearchBox from './SearchBox.jsx';
-import { makeVisible, presentAirlines } from '../lib/filters.js';
+import { makeVisible, presentAirlines, emergencyInfo } from '../lib/filters.js';
 
 // Legend rows double as category filter toggles. `key` maps to prefs.filters.
 const LEGEND = [
@@ -30,6 +30,8 @@ export default function RadarPanel(props) {
   const shownAircraft = aircraft.filter(vis);
   const shownConflicts = conflicts.filter((c) => vis(c.a) && vis(c.b));
   const airlines = presentAirlines(aircraft);
+  // Emergencies are always surfaced, regardless of category filters.
+  const emergencies = aircraft.map((ac) => ({ ac, info: emergencyInfo(ac) })).filter((e) => e.info);
 
   const viewProps = { ...props, aircraft: shownAircraft, conflicts: shownConflicts, range, labels, showTrails };
 
@@ -47,6 +49,16 @@ export default function RadarPanel(props) {
         {scope === '3D'
           ? <Radar3D {...viewProps} onUnavailable={() => setScope('2D')} />
           : <RadarScope {...viewProps} />}
+        {emergencies.length > 0 && (
+          <div className="radar-alert" role="alert">
+            {emergencies.slice(0, 2).map(({ ac, info }) => (
+              <button key={ac.id} className="ra-item" onClick={() => props.onSelect(ac.id)}>
+                <AlertTriangle size={12} /> {info.label} · {ac.callsign}{ac.squawk ? ` · SQ ${ac.squawk}` : ''}
+              </button>
+            ))}
+            {emergencies.length > 2 && <span className="ra-more">+{emergencies.length - 2}</span>}
+          </div>
+        )}
         <SearchBox aircraft={aircraft} onSelect={props.onSelect} />
         <div className="radar-controls">
           <div className="rc-group">

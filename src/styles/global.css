@@ -437,6 +437,21 @@ body {
 
 .radar-search { position: absolute; top: 10px; left: 10px; z-index: 6; }
 
+/* emergency alert — top-centre of the scope (clear of search TL / controls TR) */
+.radar-alert {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 7;
+  display: flex; align-items: center; gap: 6px; max-width: 66%;
+}
+.ra-item {
+  display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer;
+  background: rgba(38, 8, 8, 0.92); border: 1px solid var(--red); color: #ffd7d7;
+  border-radius: 5px; padding: 5px 11px; font-family: var(--font-mono); font-size: 10.5px;
+  letter-spacing: 0.04em; box-shadow: 0 0 16px rgba(255, 92, 92, 0.45);
+}
+.ra-item svg { color: var(--red); flex-shrink: 0; }
+.ra-item:hover { filter: brightness(1.25); }
+.ra-more { font-family: var(--font-mono); font-size: 10px; color: var(--red); background: rgba(38, 8, 8, 0.9); border: 1px solid var(--red); border-radius: 5px; padding: 4px 7px; }
+
 .rs-btn {
   display: grid;
   place-items: center;
@@ -715,6 +730,7 @@ body {
 .strip:hover { background: rgba(29, 50, 66, 0.3); }
 .strip.sel { background: rgba(61, 220, 151, 0.07); border-left-color: var(--green); }
 .strip.conflict { border-left-color: var(--red); background: rgba(255, 92, 92, 0.05); }
+.strip.emergency { border-left-color: var(--red); background: rgba(255, 92, 92, 0.11); box-shadow: inset 0 0 0 1px rgba(255, 92, 92, 0.28); }
 
 .strip-top { display: flex; align-items: baseline; gap: 8px; }
 .strip-cs { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.04em; }

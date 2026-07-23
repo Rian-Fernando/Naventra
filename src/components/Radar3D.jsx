@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { toLocalNm, deadReckon, fmtFL } from '../lib/geo.js';
 import { iconKind } from '../lib/aircraftIcon.js';
+import { emergencyInfo } from '../lib/filters.js';
 
 // Merge mixed primitives: ExtrudeGeometry is non-indexed while Box/Cylinder/
 // Sphere are indexed, so normalise everything to non-indexed first.
@@ -416,7 +417,8 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
 
         const isConflict = conflictIds.has(ac.id);
         const isSel = ac.id === selId;
-        const key = isConflict ? 'conflict' : (PHASE_COLORS[ac.phase] ? ac.phase : 'ENROUTE');
+        const isEmerg = !!emergencyInfo(ac);
+        const key = isEmerg || isConflict ? 'conflict' : (PHASE_COLORS[ac.phase] ? ac.phase : 'ENROUTE');
         o.cone.material = mats[isSel ? 'selected' : key];
         o.stem.material = mats[`line_${key}`];
         o.trailLine.material = mats[`trail_${key}`];
@@ -437,7 +439,7 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
           o.rotor.material = o.cone.material;
           o.rotor.rotation.y = ((now / 1000) * (ac.onGround ? 3 : 9)) % (Math.PI * 2);
         }
-        o.selRing.visible = isSel || isConflict;
+        o.selRing.visible = isSel || isConflict || isEmerg;
         o.selRing.material.color.setHex(isSel ? PHASE_COLORS.selected : PHASE_COLORS.conflict);
         o.selRing.rotation.x = -Math.PI / 2;
         if (isConflict && !isSel) {

@@ -1,6 +1,17 @@
 // Shared display-filter helpers for the radar + flight strips.
 import { airlineName } from '../data/airports.js';
 
+// Emergency detection from the transponder: the three reserved squawk codes plus
+// any ADS-B emergency flag. Returns null when nothing is declared.
+const EMERGENCY_SQUAWK = { 7500: 'HIJACK', 7600: 'RADIO FAIL', 7700: 'EMERGENCY' };
+
+export function emergencyInfo(ac) {
+  const code = ac.squawk ? EMERGENCY_SQUAWK[parseInt(ac.squawk, 10)] : null;
+  if (code) return { squawk: ac.squawk, label: code };
+  if (ac.emergency) return { squawk: ac.squawk, label: String(ac.emergency).toUpperCase() };
+  return null;
+}
+
 export function categoryOf(phase) {
   if (phase === 'DEPARTURE') return 'dep';
   if (phase === 'GROUND') return 'gnd';

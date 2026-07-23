@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PlaneLanding, PlaneTakeoff, CircleDot } from 'lucide-react';
 import { fmtAlt } from '../lib/geo.js';
 import { getRoute } from '../lib/route.js';
+import { emergencyInfo } from '../lib/filters.js';
 
 const TABS = [
   { key: 'ARR', label: 'Arrivals', icon: PlaneLanding, phases: ['ARRIVAL', 'APPROACH', 'FINAL'] },
@@ -19,7 +20,9 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
   const rows = aircraft
     .filter((a) => active.phases.includes(a.phase))
     .filter((a) => !airline || (a.callsign || '').slice(0, 3).toUpperCase() === airline)
-    .sort((a, b) => (a.seq ?? 99) - (b.seq ?? 99) || a.distNm - b.distNm);
+    // emergencies float to the top, then normal sequence / distance order
+    .sort((a, b) => (emergencyInfo(b) ? 1 : 0) - (emergencyInfo(a) ? 1 : 0)
+      || (a.seq ?? 99) - (b.seq ?? 99) || a.distNm - b.distNm);
 
   return (
     <div className="panel" style={{ flex: 1 }}>
@@ -46,6 +49,7 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
         )}
         {rows.map((a) => {
           const rt = getRoute(a.callsign);
+          const em = emergencyInfo(a);
           // Only trust the scheduled route when the endpoint at THIS field matches
           // (callsigns get reused): arrivals show origin, departures show dest.
           const endpoint = rt && (tab === 'DEP'
@@ -54,13 +58,13 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
           return (
           <div
             key={a.id}
-            className={`strip ${a.id === selectedId ? 'sel' : ''} ${conflictIds.has(a.id) ? 'conflict' : ''}`}
+            className={`strip ${a.id === selectedId ? 'sel' : ''} ${conflictIds.has(a.id) ? 'conflict' : ''} ${em ? 'emergency' : ''}`}
             onClick={() => onSelect(a.id === selectedId ? null : a.id)}
           >
             <div className="strip-top">
               <span className="strip-cs">{a.callsign}</span>
               <span className="strip-type">{a.type || '—'}</span>
-              {a.emergency && <span className="emg">⚠ {a.squawk}</span>}
+              {em && <span className="emg">⚠ {em.label}{a.squawk ? ` ${a.squawk}` : ''}</span>}
               {a.seq != null && <span className="strip-seq">#{a.seq}</span>}
               <span className={`phase-chip phase-${a.phase}`} style={{ marginLeft: a.seq == null ? 'auto' : 0 }}>
                 {a.phase}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { toLocalNm, deadReckon, fmtFL } from '../lib/geo.js';
 import { iconKind } from '../lib/aircraftIcon.js';
+import { emergencyInfo } from '../lib/filters.js';
 
 const COLORS = {
   FINAL: '#57f2ae',
@@ -456,6 +457,7 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
       // label space first; enroute clutter yields when the centre is busy.
       const drawOrder = [...acs].sort((a, b) => rank(a) - rank(b));
       function rank(a) {
+        if (emergencyInfo(a)) return -1;
         if (a.id === selId) return 0;
         if (conflictIds.has(a.id)) return 1;
         return { FINAL: 2, APPROACH: 3, ARRIVAL: 4, DEPARTURE: 5, GROUND: 7 }[a.phase] ?? 6;
@@ -474,7 +476,8 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
 
         const isConflict = conflictIds.has(ac.id);
         const isSel = ac.id === selId;
-        const color = isConflict ? COLORS.conflict : COLORS[ac.phase] || COLORS.ENROUTE;
+        const emerg = emergencyInfo(ac);
+        const color = emerg || isConflict ? COLORS.conflict : COLORS[ac.phase] || COLORS.ENROUTE;
 
         // trail
         if (trailsOn) {
@@ -538,6 +541,18 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
           ctx.arc(sx, sy, pulse, 0, Math.PI * 2);
           ctx.stroke();
         }
+        if (emerg) {
+          // double expanding ring — unmistakable priority marker
+          const p = (now % 1400) / 1400;
+          for (const o of [0, 0.5]) {
+            const t = (p + o) % 1;
+            ctx.strokeStyle = `rgba(255, 92, 92, ${0.85 * (1 - t)})`;
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 9 + t * 16, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
         ctx.restore();
 
         // data block — ground clutter only gets labels when zoomed in
@@ -545,7 +560,7 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
         const showLabel =
           labelMode === 'ALL' ||
           (labelMode === 'AUTO' && (important || totalShown < 26)) ||
-          isSel || isConflict;
+          isSel || isConflict || emerg;
         // Suppress labels that would overlap one already drawn (declutters the
         // busy centre); selected/conflict always win their space.
         const flipX = sx > width - 96;
@@ -555,7 +570,7 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
         const lblW = 74, lblH = 22;
         const boxX = flipX ? lx - lblW : lx;
         const boxY = ly - 11;
-        const blocked = collides(boxX, boxY, lblW, lblH) && !isSel && !isConflict;
+        const blocked = collides(boxX, boxY, lblW, lblH) && !isSel && !isConflict && !emerg;
         if (showLabel && !blocked) {
           labelRects.push({ x: boxX, y: boxY, w: lblW, h: lblH });
           ctx.strokeStyle = 'rgba(143, 166, 177, 0.35)';
@@ -567,8 +582,8 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
 
           ctx.font = '600 10px "IBM Plex Mono", monospace';
           ctx.textAlign = flipX ? 'right' : 'left';
-          ctx.fillStyle = isConflict ? COLORS.conflict : isSel ? COLORS.selected : 'rgba(217, 230, 236, 0.92)';
-          ctx.fillText(ac.callsign, lx, ly);
+          ctx.fillStyle = emerg || isConflict ? COLORS.conflict : isSel ? COLORS.selected : 'rgba(217, 230, 236, 0.92)';
+          ctx.fillText(`${emerg ? '⚠ ' : ''}${ac.callsign}`, lx, ly);
           ctx.font = '9px "IBM Plex Mono", monospace';
           ctx.fillStyle = 'rgba(143, 166, 177, 0.85)';
           const vsArrow = ac.vs > 250 ? '↑' : ac.vs < -250 ? '↓' : '';
