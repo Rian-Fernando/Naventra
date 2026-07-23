@@ -11,11 +11,14 @@ updates:
     labels:
       - dependencies
     ignore:
-      # React 19 is a coordinated migration (react + react-dom together, plus
-      # testing), not an automated bump — do it deliberately, not via Dependabot.
+      # These majors are deliberate migrations, not automated bumps:
+      #  - React 19 needs react + react-dom upgraded together, plus testing.
+      #  - lucide-react 1.x renamed icon exports (e.g. Github), breaking the build.
       - dependency-name: "react"
         update-types: ["version-update:semver-major"]
       - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "lucide-react"
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
