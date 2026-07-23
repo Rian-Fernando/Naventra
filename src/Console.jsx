@@ -150,7 +150,7 @@ export default function Console({ route }) {
               <CommsLog comms={atc.comms} airport={atc.airport} />
             </div>
           )}
-          <Tour />
+          <Tour view={view} />
         </>
       )}
     </div>
