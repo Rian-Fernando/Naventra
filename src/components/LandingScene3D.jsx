@@ -369,7 +369,9 @@ export default function LandingScene3D() {
         if (H.dir < 0 && H.x < -76) H.x = 76;
         H.bob += dt;
         H.o.group.position.set(H.x, H.y + Math.sin(H.bob * 0.8) * 0.4, H.z);
-        H.o.group.rotation.set(-0.08, H.dir > 0 ? -Math.PI / 2 : Math.PI / 2, 0); // nose into travel, slight forward pitch
+        // Nose (+z) points into travel; yaw first (YXZ) then a slight nose-down
+        // cruise attitude. dir>0 travels +x → yaw +90°; dir<0 travels -x → -90°.
+        H.o.group.rotation.set(0.05, H.dir > 0 ? Math.PI / 2 : -Math.PI / 2, 0, 'YXZ');
         H.spin -= dt * 22; H.o.rotor.rotation.y = H.spin;      // main rotor
         H.tspin -= dt * 42; H.o.tail.rotation.x = H.tspin;     // tail rotor
         H.beaconT += dt; H.o.beacon.material.opacity = (H.beaconT % 1.2 < 0.12) ? 1 : 0;
