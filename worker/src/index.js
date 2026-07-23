@@ -55,11 +55,17 @@ export default {
       }
       // Manual trigger for local testing / first warm-up (harmless in prod).
       if (url.pathname === '/api/tick') {
-        const r = await Promise.all(TRACKED.map((i) => tickAirport(env, i).catch((e) => ({ icao: i, error: String(e) }))));
+        const r = await Promise.all(TRACKED.map((i) =>
+          tickAirport(env, i).catch((e) => {
+            console.error('tickAirport failed', i, e);
+            return { icao: i, error: 'tick failed' };
+          })
+        ));
         return json({ ticked: r });
       }
     } catch (e) {
-      return json({ error: String(e && e.message || e) }, 500);
+      console.error('Unhandled fetch error', e);
+      return json({ error: 'internal server error' }, 500);
     }
     return json({ error: 'not found', endpoints: ['/api/scorecard', '/api/model', '/api/health', '/api/dataset.jsonl'] }, 404);
   },
