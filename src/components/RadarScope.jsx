@@ -1,7 +1,10 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { toLocalNm, deadReckon, fmtFL } from '../lib/geo.js';
 import { iconKind } from '../lib/aircraftIcon.js';
 import { emergencyInfo } from '../lib/filters.js';
+
+const ZMIN = 1, ZMAX = 12;
+const clampZ = (z) => Math.max(ZMIN, Math.min(ZMAX, z));
 
 const COLORS = {
   FINAL: '#57f2ae',
@@ -147,13 +150,19 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
   const trailsRef = useRef(new Map());
   const rangeRef = useRef(range);
   const optsRef = useRef({ labels, showTrails });
+  const zoomRef = useRef(1);            // scroll-to-zoom multiplier
+  const panRef = useRef({ x: 0, y: 0 }); // drag-to-pan offset (screen px)
+  const [zoomed, setZoomed] = useState(false);
 
   stateRef.current = { aircraft, conflicts, runways, selectedId, airport };
   rangeRef.current = range;
   optsRef.current = { labels, showTrails };
 
-  // Reset trails when the facility changes.
-  useEffect(() => { trailsRef.current = new Map(); }, [airport.icao]);
+  const resetView = useCallback(() => { zoomRef.current = 1; panRef.current = { x: 0, y: 0 }; setZoomed(false); }, []);
+
+  // Reset trails + view when the facility or range changes.
+  useEffect(() => { trailsRef.current = new Map(); resetView(); }, [airport.icao, resetView]);
+  useEffect(() => { resetView(); }, [range, resetView]);
 
   const hitTest = useCallback((px, py) => {
     const canvas = canvasRef.current;
@@ -163,6 +172,10 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
     const cy = rect.height / 2;
     const radius = Math.min(cx, cy) - 18;
     const scale = radius / rangeRef.current;
+    // Undo the zoom/pan transform so the click maps back to base scope space.
+    const z = zoomRef.current, pan = panRef.current;
+    const qx = (px - cx - pan.x) / z + cx;
+    const qy = (py - cy - pan.y) / z + cy;
     const { aircraft: acs, airport: ap } = stateRef.current;
     const now = Date.now();
     let best = null;
@@ -172,7 +185,7 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
       const { x, y } = toLocalNm(ap.lat, ap.lon, dr.lat, dr.lon);
       const sx = cx + x * scale;
       const sy = cy - y * scale;
-      const d = Math.hypot(px - sx, py - sy);
+      const d = Math.hypot(qx - sx, qy - sy);
       if (d < bestD) { bestD = d; best = ac.id; }
     }
     return best;
@@ -214,6 +227,14 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
 
       // -- background
       ctx.clearRect(0, 0, width, height);
+
+      // scroll-zoom / drag-pan: zoom around the field, offset by the pan drag.
+      // Everything below is drawn in base coordinates; this transform scales it.
+      const zoom = zoomRef.current, pan = panRef.current;
+      ctx.save();
+      ctx.translate(cx + pan.x, cy + pan.y);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-cx, -cy);
       const bgGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
       bgGrad.addColorStop(0, '#071310');
       bgGrad.addColorStop(0.75, '#05100d');
@@ -602,6 +623,8 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.stroke();
 
+      ctx.restore(); // end zoom/pan transform
+
       raf = requestAnimationFrame(draw);
     };
 
@@ -609,15 +632,71 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, []);
 
-  const onClick = (e) => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const id = hitTest(e.clientX - rect.left, e.clientY - rect.top);
-    onSelect(id);
-  };
+  // Scroll to zoom (around the cursor), drag to pan, tap to select, double-click
+  // to reset. Lets you zoom into distant traffic that's tiny at full range.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    canvas.style.cursor = 'grab';
+    let dragging = false, moved = false, sx0 = 0, sy0 = 0, startPan = { x: 0, y: 0 };
+
+    const onWheel = (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const cx = rect.width / 2, cy = rect.height / 2;
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const old = zoomRef.current;
+      const nz = clampZ(old * (e.deltaY < 0 ? 1.12 : 0.892));
+      if (nz <= 1.001) { resetView(); return; }
+      const k = nz / old;
+      panRef.current = {
+        x: mx - cx - (mx - cx - panRef.current.x) * k,
+        y: my - cy - (my - cy - panRef.current.y) * k,
+      };
+      zoomRef.current = nz;
+      setZoomed(true);
+    };
+    const onDown = (e) => {
+      dragging = true; moved = false; sx0 = e.clientX; sy0 = e.clientY;
+      startPan = { ...panRef.current }; canvas.style.cursor = 'grabbing';
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    };
+    const onMove = (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - sx0, dy = e.clientY - sy0;
+      if (!moved && Math.hypot(dx, dy) > 4) moved = true;
+      if (moved) { panRef.current = { x: startPan.x + dx, y: startPan.y + dy }; setZoomed(true); }
+    };
+    const onUp = (e) => {
+      if (!dragging) return;
+      dragging = false; canvas.style.cursor = 'grab';
+      if (!moved) {
+        const rect = canvas.getBoundingClientRect();
+        onSelect(hitTest(e.clientX - rect.left, e.clientY - rect.top));
+      }
+    };
+    const onDbl = (e) => { e.preventDefault(); resetView(); };
+
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('pointerdown', onDown);
+    canvas.addEventListener('pointermove', onMove);
+    canvas.addEventListener('pointerup', onUp);
+    canvas.addEventListener('pointercancel', onUp);
+    canvas.addEventListener('dblclick', onDbl);
+    return () => {
+      canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('pointerdown', onDown);
+      canvas.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerup', onUp);
+      canvas.removeEventListener('pointercancel', onUp);
+      canvas.removeEventListener('dblclick', onDbl);
+    };
+  }, [hitTest, onSelect, resetView]);
 
   return (
     <div className="radar-canvas-wrap" ref={wrapRef}>
-      <canvas ref={canvasRef} onClick={onClick} />
+      <canvas ref={canvasRef} />
+      {zoomed && <button className="scope-reset" onClick={resetView} title="Reset view (double-click the scope)">RESET VIEW</button>}
     </div>
   );
 }

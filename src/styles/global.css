@@ -396,7 +396,14 @@ body {
 
 .radar-canvas-wrap { position: relative; flex: 1; min-height: 0; }
 
-.radar-canvas-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+.radar-canvas-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; }
+.scope-reset {
+  position: absolute; top: 46px; left: 10px; z-index: 6;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em; color: var(--cyan);
+  background: rgba(7, 12, 17, 0.9); border: 1px solid var(--cyan-dim); border-radius: 5px;
+  padding: 5px 9px; cursor: pointer;
+}
+.scope-reset:hover { background: rgba(76, 201, 240, 0.12); }
 
 .radar3d { cursor: grab; background: radial-gradient(ellipse at 50% 30%, #071310 0%, #04070a 70%); }
 .radar3d:active { cursor: grabbing; }
@@ -451,6 +458,20 @@ body {
 .ra-item svg { color: var(--red); flex-shrink: 0; }
 .ra-item:hover { filter: brightness(1.25); }
 .ra-more { font-family: var(--font-mono); font-size: 10px; color: var(--red); background: rgba(38, 8, 8, 0.9); border: 1px solid var(--red); border-radius: 5px; padding: 4px 7px; }
+
+/* ambient weather overlay + condition chip */
+.weather-fx { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.wx-chip {
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 6;
+  pointer-events: none; font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--text-dim); background: rgba(7, 12, 17, 0.82);
+  border: 1px solid var(--line-bright); border-radius: 20px; padding: 4px 12px; white-space: nowrap;
+}
+.wx-chip::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 7px; vertical-align: middle; background: currentColor; }
+.wx-rain, .wx-thunder { color: var(--cyan); }
+.wx-snow { color: #cfe3f2; }
+.wx-fog { color: var(--muted); }
+.wx-wind { color: var(--amber); }
 
 .rs-btn {
   display: grid;
@@ -916,7 +937,9 @@ body {
 
 /* -------------------------------------------------------------- comms --- */
 
-.comms-body { display: flex; flex-direction: column-reverse; }
+/* Newest first, top-aligned — so the latest call sits flush at the top with no
+   gap when the panel is tall (column-reverse used to pack from the bottom). */
+.comms-body { display: flex; flex-direction: column; }
 
 .comm-line {
   display: flex;

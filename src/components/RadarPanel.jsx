@@ -3,7 +3,9 @@ import { Radar, AlertTriangle } from 'lucide-react';
 import RadarScope from './RadarScope.jsx';
 import Radar3D from './Radar3D.jsx';
 import SearchBox from './SearchBox.jsx';
+import WeatherFX from './WeatherFX.jsx';
 import { makeVisible, presentAirlines, emergencyInfo } from '../lib/filters.js';
+import { classifyWeather } from '../lib/weatherFx.js';
 
 // Legend rows double as category filter toggles. `key` maps to prefs.filters.
 const LEGEND = [
@@ -17,7 +19,8 @@ const LEGEND = [
 // Shared chrome for the scope: view toggle (3D / 2D), range, trails, labels,
 // category filters (legend checkboxes) and an airline filter.
 export default function RadarPanel(props) {
-  const { airport, mode, aircraft, conflicts, view } = props;
+  const { airport, mode, aircraft, conflicts, view, weather } = props;
+  const wxfx = classifyWeather(weather);
   const scope = view?.prefs.radarView || '3D';
   const setScope = view?.setRadarView || (() => {});
   const [range, setRange] = useState(40);
@@ -40,7 +43,7 @@ export default function RadarPanel(props) {
       <div className="panel-head">
         <Radar size={14} color="var(--green)" />
         <span className="panel-title">Radar / TRACON — {airport.icao}</span>
-        {scope === '3D' && <span className="mono-sm">drag to orbit · scroll to zoom</span>}
+        <span className="mono-sm">{scope === '3D' ? 'drag to orbit · scroll to zoom' : 'scroll to zoom · drag to pan'}</span>
         <span className={`badge ${mode === 'LIVE' ? 'green' : mode === 'SIM' ? 'amber' : ''}`}>
           {mode === 'LIVE' ? '● LIVE ADS-B' : mode === 'SIM' ? '◌ SIMULATION' : '… ACQUIRING'}
         </span>
@@ -49,6 +52,8 @@ export default function RadarPanel(props) {
         {scope === '3D'
           ? <Radar3D {...viewProps} onUnavailable={() => setScope('2D')} />
           : <RadarScope {...viewProps} />}
+        <WeatherFX weather={weather} />
+        {wxfx.kind !== 'clear' && <div className={`wx-chip wx-${wxfx.kind}`}>{wxfx.label}</div>}
         {emergencies.length > 0 && (
           <div className="radar-alert" role="alert">
             {emergencies.slice(0, 2).map(({ ac, info }) => (

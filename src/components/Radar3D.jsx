@@ -179,7 +179,7 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
     controls.enableDamping = true;
     controls.dampingFactor = 0.07;
     controls.enablePan = false;
-    controls.minDistance = 25;
+    controls.minDistance = 8;   // allow zooming right down to the field / gates
     controls.maxDistance = 320;
     controls.maxPolarAngle = 1.46;
 
@@ -425,7 +425,9 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
         // Ground traffic recedes when zoomed out (a small marker in the busy
         // centre) and grows when you zoom in, so aircraft lined up at gates and
         // on taxiways become legible at close range.
-        const gScale = rangeNm >= 60 ? 0.28 : rangeNm >= 40 ? 0.36 : rangeNm >= 20 ? 0.52 : 0.78;
+        // Ground traffic clusters at gates/taxiways; scale it up as you zoom in
+        // so individual aircraft separate out and stay identifiable.
+        const gScale = rangeNm >= 60 ? 0.28 : rangeNm >= 40 ? 0.36 : rangeNm >= 20 ? 0.52 : rangeNm >= 10 ? 0.8 : rangeNm >= 5 ? 1.05 : 1.35;
         o.cone.scale.setScalar(ac.onGround ? gScale : 1);
         // Heading (yaw) + a pitch tilt from vertical speed: nose-up climbing,
         // nose-down descending — reads as realistic climb/approach attitude.
