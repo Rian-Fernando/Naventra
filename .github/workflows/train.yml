@@ -1,0 +1,36 @@
+name: Train model
+
+# Weekly retrain: pull the always-on tracker's dataset, train the per-airport
+# runway model, evaluate it head-to-head against the live engine, and commit the
+# refreshed model + report. Only airports where the model beats the engine on the
+# time-split are flagged for adoption (see scripts/train_model.py).
+
+on:
+  schedule:
+    - cron: "0 7 * * 1" # Mondays 07:00 UTC
+  workflow_dispatch:
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy
+      - name: Train + evaluate
+        run: python3 scripts/train_model.py
+      - name: Commit refreshed model
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/model.json docs/model-report.md
+          if git diff --staged --quiet; then
+            echo "No change in model or report."
+          else
+            git commit -m "Weekly model retrain [skip ci]"
+            git push
+          fi
