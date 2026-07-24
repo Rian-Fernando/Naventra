@@ -105,12 +105,16 @@ check('dep wake: floored at 60s occupancy', wakeDepartureSepSec('M', 'M') === 60
   const ap = AIRPORTS.KJFK;
   const rwys = atc.allocateRunways(ap, { windDir: 250, windKt: 10 });
   const ann = atc.annotateAircraft([], ap, rwys, {}, runwayPrior);
-  const vmc = computeCapacity(ann, rwys, { fltCat: 'VFR' }, 20);
-  const lifr = computeCapacity(ann, rwys, { fltCat: 'LIFR' }, 20);
+  const vmc = computeCapacity(ann, rwys, { clouds: [], visib: '10' }, 20);
   check('AAR positive & sane', vmc.aar > 10 && vmc.aar < 200, `${vmc.aar}`);
-  check('low visibility lowers AAR', lifr.aar < vmc.aar, `LIFR ${lifr.aar} < VFR ${vmc.aar}`);
   check('AAR exposes drivers', vmc.meanSpacingNm > 0 && vmc.finalSpeedKt > 0);
   check('ADR positive & sane', vmc.adr > 5 && vmc.adr < 200, `${vmc.adr}`);
+  // Low-visibility: CAT III (100ft ceiling, 1/4mi vis) cuts AAR hard + sets LVP.
+  const catIII = computeCapacity(ann, rwys, { clouds: [{ code: 'OVC', baseFt: 100 }], visib: '1/4' }, 20);
+  check('clear sky = VMC, no LVP', vmc.approachCat === 'VMC' && vmc.lvp === false, vmc.approachCat);
+  check('low ceiling/vis = CAT III + LVP', catIII.approachCat === 'CAT III' && catIII.lvp === true, catIII.approachCat);
+  check('LVP widens spacing to ≥6nm', catIII.effSpacingNm >= 6, `${catIII.effSpacingNm}`);
+  check('CAT III AAR well below VMC', catIII.aar < vmc.aar * 0.7, `${catIII.aar} vs ${vmc.aar}`);
 }
 
 // ETA model serving: feature vector matches training length, correction is

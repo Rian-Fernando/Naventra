@@ -149,6 +149,26 @@ Two things we deliberately **don't** fake: real **SID routes** (the published de
 paths) and **EDCT/CTOT** slots from flow management aren't in free/keyless data, so they're
 left out rather than invented.
 
+## Low-visibility operations (why fog wrecks capacity)
+
+As the ceiling and visibility drop, approaches step down through categories — each needing
+more capable aircraft/crew and, crucially, **more spacing**:
+
+| Category | Roughly | Effect on capacity |
+|---|---|---|
+| **VMC** | ceiling ≥ 3,000 ft, vis ≥ 5 sm | full rate |
+| **CAT I** | ceiling ≥ 200 ft, vis ≥ ¾ sm | ~15% down |
+| **CAT II** | ceiling ≥ 100 ft, vis ≥ ~¼ sm | **LVP** — ~30% down |
+| **CAT III** | ceiling < 100 ft / vis < ¼ sm | **LVP** — ~50% down |
+
+Below CAT I, **Low-Visibility Procedures (LVP)** protect the **ILS critical/sensitive area**
+— only one aircraft may be near the ILS antenna at a time — which forces wider final
+spacing and can halve the acceptance rate. Naventra derives the category from the live
+ceiling and visibility, widens the effective spacing under LVP (≥ 5 nm CAT II, ≥ 6 nm
+CAT III), and drops the AAR accordingly; Tower Ops shows the approach category and an **LVP**
+flag. *(src/engine/capacity.js → approachCategory)* We don't have live **RVR** (runway
+visual range) in the basic METAR, so ceiling + prevailing visibility is the honest proxy.
+
 ## Surface safety — runway incursions
 
 The most serious ground risk is a **runway incursion**: an aircraft (or vehicle) on a
@@ -172,7 +192,8 @@ surface-surveillance system. It is labelled as such and never presented as autho
 - ✅ **Departure flow** — wake-on-departure time spacing + Airport Departure Rate (ADR).
   (SIDs and EDCT slots left out — not in free data.)
 - ✅ **Surface safety** — runway-incursion advisory (partial ADS-B ground coverage).
-- ⏭ Low-visibility capacity refinements; richer surface picture if better ground data appears.
+- ✅ **Low-visibility ops** — approach category (VMC → CAT III) + LVP drive the AAR.
+- ⏭ Richer surface picture if better ground data appears; keep the model honest as data grows.
 
 ## The touchdown-ETA model (why it, not runway)
 

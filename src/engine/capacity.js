@@ -9,8 +9,35 @@
 // A stream of heavies at 6 nm yields ~23/hr; mediums at 3 nm ~47/hr — so the
 // wake mix (from engine/wake.js) directly drives capacity.
 
-const WX_FACTOR = { VFR: 1.0, MVFR: 0.9, IFR: 0.8, LIFR: 0.62 };
 const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+
+// Lowest broken/overcast layer = the ceiling (ft); missing = clear sky.
+function ceilingOf(w) {
+  const bases = (w?.clouds || [])
+    .filter((c) => ['BKN', 'OVC', 'OVX'].includes(c.code || c.cover))
+    .map((c) => c.baseFt).filter((b) => typeof b === 'number');
+  return bases.length ? Math.min(...bases) : null;
+}
+function visSmOf(w) {
+  const s = String(w?.visib ?? '10');
+  if (s.includes('+')) return 10;
+  if (s.includes('/')) { const [a, b] = s.split('/').map(Number); return b ? a / b : 10; }
+  const n = parseFloat(s);
+  return Number.isNaN(n) ? 10 : n;
+}
+
+// Operational approach category from ceiling + visibility — the real driver of
+// capacity loss. Below CAT I, Low-Visibility Procedures protect the ILS critical
+// area (wider spacing) and the acceptance rate drops sharply.
+function approachCategory(ceilingFt, visSm) {
+  const c = ceilingFt ?? 9999;
+  const v = visSm ?? 10;
+  if (c < 200 || v < 0.5) return { cat: 'CAT III', lvp: true, factor: 0.5 };
+  if (c < 500 || v < 1) return { cat: 'CAT II', lvp: true, factor: 0.68 };
+  if (c < 1000 || v < 3) return { cat: 'CAT I', lvp: false, factor: 0.85 };
+  if (c < 3000 || v < 5) return { cat: 'MVFR', lvp: false, factor: 0.94 };
+  return { cat: 'VMC', lvp: false, factor: 1.0 };
+}
 
 export function computeCapacity(annotated, runways, weather, arrHr = 0) {
   const arrRwys = runways.filter((r) => r.role.includes('ARR'));
@@ -28,13 +55,17 @@ export function computeCapacity(annotated, runways, weather, arrHr = 0) {
   const sp = inbound.map((a) => a.reqSpacingNm).filter((x) => x != null);
   const meanSpacingNm = +(mean(sp) ?? 4).toFixed(1);
 
-  const wxCat = weather?.fltCat || 'VFR';
-  const weatherFactor = WX_FACTOR[wxCat] ?? 1.0;
+  // Approach category from live ceiling + visibility drives the weather factor.
+  const app = approachCategory(ceilingOf(weather), visSmOf(weather));
+  const wxCat = app.cat;
+  const weatherFactor = app.factor;
+  // Low-visibility procedures widen final spacing (ILS sensitive-area protection).
+  const effSpacingNm = Math.max(meanSpacingNm, app.lvp ? (app.cat === 'CAT III' ? 6 : 5) : 0, 2.5);
 
   // Additional parallel runways add capacity, but dependent/interleaved ops mean
   // it's not a clean multiple — each extra runway adds ~0.65 of a stream.
   const streams = 1 + (nRwy - 1) * 0.65;
-  const perRunwayRate = finalSpeedKt / Math.max(2.5, meanSpacingNm);
+  const perRunwayRate = finalSpeedKt / effSpacingNm;
   const aar = Math.round(streams * perRunwayRate * weatherFactor);
 
   // flow: recent measured landing rate vs capacity
@@ -61,7 +92,8 @@ export function computeCapacity(annotated, runways, weather, arrHr = 0) {
 
   return {
     aar, perRunwayRate: Math.round(perRunwayRate), arrRwyCount: nRwy,
-    meanSpacingNm, finalSpeedKt, weatherFactor, wxCat,
+    meanSpacingNm, effSpacingNm: +effSpacingNm.toFixed(1), finalSpeedKt, weatherFactor, wxCat,
+    approachCat: app.cat, lvp: app.lvp,
     inbound: inbound.length, arrHr,
     utilization, utilPct: Math.round(utilization * 100), status, delayMin,
     adr, meanDepGapSec, depRwyCount: depRwys.length,

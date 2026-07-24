@@ -18,7 +18,10 @@ export default function OpsStatsPanel({ opsStats, kpis, capacity }) {
         <div className="cap">
           <div className="cap-head">
             <span>Acceptance rate <em>est.</em></span>
-            <span className={`cap-status ${STATUS_CLASS[c.status] || 'green'}`}>{c.status}</span>
+            <span className="cap-tags">
+              {c.lvp && <span className="cap-lvp">LVP</span>}
+              <span className={`cap-status ${STATUS_CLASS[c.status] || 'green'}`}>{c.status}</span>
+            </span>
           </div>
           <div className="cap-main">
             <div className="cap-rate"><b>{c.aar}</b><span>AAR · arr/hr</span></div>
@@ -27,8 +30,8 @@ export default function OpsStatsPanel({ opsStats, kpis, capacity }) {
           <div className="cap-bar"><i className={STATUS_CLASS[c.status] || 'green'} style={{ width: `${Math.min(100, c.utilPct)}%` }} /></div>
           <div className="cap-rows">
             <span>Inbound <b>{c.inbound}</b></span>
-            <span>Spacing <b>{c.meanSpacingNm}nm</b></span>
-            <span>Wx <b>{c.wxCat}</b></span>
+            <span>Spacing <b>{c.effSpacingNm}nm</b></span>
+            <span>Appr <b>{c.approachCat}</b></span>
             {c.delayMin > 0 ? <span className="cap-delay">Delay ~<b>{c.delayMin}m</b></span> : <span>Load <b>{c.utilPct}%</b></span>}
           </div>
         </div>
