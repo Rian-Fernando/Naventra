@@ -4,6 +4,7 @@ import { radioName } from '../engine/atc.js';
 import { distNm } from '../lib/geo.js';
 import { fetchRoute, getRoute } from '../lib/route.js';
 import { typicalSeats } from '../lib/aircraftMeta.js';
+import { WAKE_LABEL } from '../engine/wake.js';
 import { useSettings } from '../hooks/useSettings.jsx';
 import { fmtAltitude, fmtSpeed, fmtDist } from '../lib/units.js';
 
@@ -69,6 +70,8 @@ export default function AircraftDetail({ aircraft, airport, onClose }) {
     ['Track', `${Math.round(a.track)}°`],
     ['V/S', `${a.vs > 0 ? '+' : ''}${Math.round(a.vs)} fpm`],
     ['Distance to field', fmtDist(a.distNm, settings.distance)],
+    a.wake ? ['Wake category', WAKE_LABEL[a.wake]] : null,
+    a.reqSpacingNm ? ['Wake spacing', `${a.reqSpacingNm} nm behind ${a.leaderCs}${a.inTrailNm != null ? ` (${a.inTrailNm.toFixed(1)} now)` : ''}`] : null,
     a.seq != null ? ['Landing seq', `#${a.seq}`] : null,
     a.runway ? ['Runway', a.runway] : null,
     a.gate ? ['Stand', a.gate] : null,

@@ -6,6 +6,7 @@
 import { distNm, bearingDeg, velocityNmS, toLocalNm, cpa, angleDiff, windComponents, fmtAlt } from '../lib/geo.js';
 import { airlineName } from '../data/airports.js';
 import { octantOf } from './octant.js';
+import { wakeCat, wakeSepNm, WAKE_LABEL } from './wake.js';
 
 export const PHASES = ['GROUND', 'DEPARTURE', 'ENROUTE', 'ARRIVAL', 'APPROACH', 'FINAL'];
 
@@ -224,7 +225,7 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
     const etaMin = ac.gs > 40
       ? (d / (inboundPhase ? Math.max(95, (ac.gs + 145) / 2) : ac.gs)) * 60
       : null;
-    return { ...ac, distNm: d, brgFromField: (brgTo + 180) % 360, agl, phase, etaMin, closing };
+    return { ...ac, distNm: d, brgFromField: (brgTo + 180) % 360, agl, phase, etaMin, closing, wake: wakeCat(ac.type, ac.category) };
   });
 
   // Arrival sequencing: order the inbound flows by ETA and distribute across
@@ -260,10 +261,26 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
   // Per-runway landing rank — the scorecard's "next to land" claim is judged
   // against the queue for that runway, not the global sequence.
   const rwyRank = {};
+  const byRwy = {};
   for (const a of inbound) {
     if (!a.runway) continue;
     rwyRank[a.runway] = (rwyRank[a.runway] || 0) + 1;
     a.seqRwy = rwyRank[a.runway];
+    (byRwy[a.runway] = byRwy[a.runway] || []).push(a);
+  }
+
+  // Wake-aware in-trail spacing: real final-approach separation is set by the
+  // (leader, follower) wake pair, not a flat 3nm. For each runway queue, compute
+  // the spacing the follower needs behind its leader and the gap it has now.
+  for (const q of Object.values(byRwy)) {
+    q.sort((x, y) => (x.etaMin ?? 999) - (y.etaMin ?? 999)); // leader (closest) first
+    for (let i = 1; i < q.length; i++) {
+      const lead = q[i - 1], fol = q[i];
+      fol.reqSpacingNm = wakeSepNm(lead.wake, fol.wake);
+      fol.leaderCs = lead.callsign;
+      fol.inTrailNm = (fol.distNm != null && lead.distNm != null) ? Math.max(0, fol.distNm - lead.distNm) : null;
+      fol.wakeTight = fol.inTrailNm != null && fol.inTrailNm < fol.reqSpacingNm - 0.3;
+    }
   }
 
   const depRwys = runways.filter((r) => r.role.includes('DEP'));
@@ -415,8 +432,10 @@ export function generateEvents(prev, next, airport, runways, conflicts, prevConf
         break;
       case 'APPROACH':
         if (ac.seq != null) {
-          decisions.push(decision('SEQUENCE', 'info', `Sequenced ${cs} — number ${ac.seq}`,
-            `Slotted number ${ac.seq} for runway ${ac.runway}; in-trail spacing verified at ${(4 + hash01(cs) * 3).toFixed(1)}nm.${ac.gate ? ` Stand ${ac.gate} reserved.` : ''}`,
+          decisions.push(decision('SEQUENCE', ac.wakeTight ? 'warning' : 'info', `Sequenced ${cs} — number ${ac.seq}`,
+            `Slotted number ${ac.seq} for runway ${ac.runway}. ${ac.reqSpacingNm
+              ? `${WAKE_LABEL[ac.wake] || 'Traffic'} behind ${ac.leaderCs}: ${ac.reqSpacingNm}nm wake spacing required${ac.inTrailNm != null ? `, ${ac.inTrailNm.toFixed(1)}nm now${ac.wakeTight ? ' — compressing, extend' : ''}` : ''}.`
+              : 'Lead aircraft in the arrival sequence.'}${ac.gate ? ` Stand ${ac.gate} reserved.` : ''}`,
             [cs]));
           if (ac.seq <= 3) comms.push(comm(fA, app, `${rn}, you're number ${ac.seq}, reduce speed 190, expect vectors ILS runway ${ac.runway}.`, 'atc'));
         }

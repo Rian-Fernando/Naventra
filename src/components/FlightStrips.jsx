@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PlaneLanding, PlaneTakeoff, CircleDot } from 'lucide-react';
 import { getRoute } from '../lib/route.js';
 import { emergencyInfo } from '../lib/filters.js';
+import { WAKE_LABEL } from '../engine/wake.js';
 import { useSettings } from '../hooks/useSettings.jsx';
 import { fmtAltScope, fmtSpeed, speedUnitLabel, convDist, distUnitLabel } from '../lib/units.js';
 
@@ -66,6 +67,7 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
             <div className="strip-top">
               <span className="strip-cs">{a.callsign}</span>
               <span className="strip-type">{a.type || '—'}</span>
+              {(a.wake === 'H' || a.wake === 'J') && <span className={`wk wk-${a.wake}`}>{WAKE_LABEL[a.wake]}</span>}
               {em && <span className="emg">⚠ {em.label}{a.squawk ? ` ${a.squawk}` : ''}</span>}
               {a.seq != null && <span className="strip-seq">#{a.seq}</span>}
               <span className={`phase-chip phase-${a.phase}`} style={{ marginLeft: a.seq == null ? 'auto' : 0 }}>
@@ -77,6 +79,7 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
               <span><b>{fmtSpeed(a.gs, settings.speed, false)}</b>{speedUnitLabel(settings.speed)}</span>
               <span><b>{convDist(a.distNm, settings.distance).toFixed(1)}</b>{distUnitLabel(settings.distance)}</span>
               {a.etaMin != null && a.phase !== 'DEPARTURE' && <span>ETA <b>{Math.round(a.etaMin)}m</b></span>}
+              {a.reqSpacingNm && <span className={`spc ${a.wakeTight ? 'tight' : ''}`} title={`Required wake spacing behind ${a.leaderCs}`}>◂<b>{a.reqSpacingNm}</b>nm</span>}
             </div>
             <div className="strip-bot">
               {a.runway && <span className="rwy">RWY {a.runway}</span>}

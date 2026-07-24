@@ -15,13 +15,14 @@ globalThis.localStorage = {
   setItem(k, v) { this._d[k] = v; },
 };
 
-const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior }, { buildOutlook }] = await Promise.all([
+const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior }, { buildOutlook }, { wakeCat, wakeSepNm }] = await Promise.all([
   import('../src/lib/sim.js'),
   import('../src/data/airports.js'),
   import('../src/engine/atc.js'),
   import('../src/engine/predictions.js'),
   import('../src/engine/learning.js'),
   import('../src/engine/forecast.js'),
+  import('../src/engine/wake.js'),
 ]);
 
 let failures = 0;
@@ -80,6 +81,17 @@ check('airport data integrity', failures === 0 || true); // summarized above
   check('forecast storm = HIGH risk', out[1].risk.level === 'HIGH', `${out[1].risk.pct}%`);
   check('forecast produces a config label', !!out[0].config && out[0].config !== '—', out[0].config);
 }
+
+// Wake turbulence: categories from type + the separation matrix (floored at the
+// 3 nm radar minimum), so final-approach spacing is realistic.
+check('wake A388 = super', wakeCat('A388') === 'J');
+check('wake B77W = heavy', wakeCat('B77W') === 'H');
+check('wake A320 = medium', wakeCat('A320') === 'M');
+check('wake C172 = light', wakeCat('C172') === 'L');
+check('wake sep medium-behind-heavy = 5nm', wakeSepNm('H', 'M') === 5, `${wakeSepNm('H', 'M')}`);
+check('wake sep light-behind-super = 8nm', wakeSepNm('J', 'L') === 8, `${wakeSepNm('J', 'L')}`);
+check('wake sep floored at radar min 3nm', wakeSepNm('M', 'M') === 3, `${wakeSepNm('M', 'M')}`);
+check('wake sep unknown → radar min', wakeSepNm(null, 'M') === 3);
 
 if (failures) {
   console.error(`\n${failures} regression check(s) failed`);
