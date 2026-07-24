@@ -15,7 +15,7 @@ globalThis.localStorage = {
   setItem(k, v) { this._d[k] = v; },
 };
 
-const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior }, { buildOutlook }, { wakeCat, wakeSepNm }, { computeCapacity }, { etaVec, etaCorrectionSec }, grading] = await Promise.all([
+const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior }, { buildOutlook }, { wakeCat, wakeSepNm, wakeDepartureSepSec }, { computeCapacity }, { etaVec, etaCorrectionSec }, grading] = await Promise.all([
   import('../src/lib/sim.js'),
   import('../src/data/airports.js'),
   import('../src/engine/atc.js'),
@@ -95,6 +95,8 @@ check('wake sep medium-behind-heavy = 5nm', wakeSepNm('H', 'M') === 5, `${wakeSe
 check('wake sep light-behind-super = 8nm', wakeSepNm('J', 'L') === 8, `${wakeSepNm('J', 'L')}`);
 check('wake sep floored at radar min 3nm', wakeSepNm('M', 'M') === 3, `${wakeSepNm('M', 'M')}`);
 check('wake sep unknown → radar min', wakeSepNm(null, 'M') === 3);
+check('dep wake: 2 min behind heavy', wakeDepartureSepSec('H', 'M') === 120, `${wakeDepartureSepSec('H', 'M')}`);
+check('dep wake: floored at 60s occupancy', wakeDepartureSepSec('M', 'M') === 60, `${wakeDepartureSepSec('M', 'M')}`);
 
 // Capacity (AAR): responds to weather and stays in a sane range; low visibility
 // must lower the acceptance rate.
@@ -107,6 +109,7 @@ check('wake sep unknown → radar min', wakeSepNm(null, 'M') === 3);
   check('AAR positive & sane', vmc.aar > 10 && vmc.aar < 200, `${vmc.aar}`);
   check('low visibility lowers AAR', lifr.aar < vmc.aar, `LIFR ${lifr.aar} < VFR ${vmc.aar}`);
   check('AAR exposes drivers', vmc.meanSpacingNm > 0 && vmc.finalSpeedKt > 0);
+  check('ADR positive & sane', vmc.adr > 5 && vmc.adr < 200, `${vmc.adr}`);
 }
 
 // ETA model serving: feature vector matches training length, correction is

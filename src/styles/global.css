@@ -767,9 +767,10 @@ body {
 .cap-status.green { color: var(--green); border-color: var(--green-dim); background: rgba(61, 220, 151, 0.08); }
 .cap-status.amber { color: var(--amber); border-color: rgba(255, 180, 84, 0.4); background: rgba(255, 180, 84, 0.08); }
 .cap-status.red { color: var(--red); border-color: rgba(255, 92, 92, 0.45); background: rgba(255, 92, 92, 0.1); }
-.cap-main { display: flex; align-items: baseline; gap: 8px; margin: 7px 0 8px; }
-.cap-main b { font-family: var(--font-display); font-size: 30px; font-weight: 600; color: var(--text); line-height: 1; }
-.cap-main span { font-size: 10px; color: var(--text-dim); }
+.cap-main { display: flex; gap: 22px; margin: 8px 0; }
+.cap-rate { display: flex; flex-direction: column; }
+.cap-rate b { font-family: var(--font-display); font-size: 26px; font-weight: 600; color: var(--text); line-height: 1; }
+.cap-rate span { font-size: 9px; color: var(--muted); margin-top: 3px; letter-spacing: 0.04em; }
 .cap-bar { height: 5px; border-radius: 3px; background: var(--line-bright); overflow: hidden; }
 .cap-bar i { display: block; height: 100%; border-radius: 3px; transition: width 0.4s; }
 .cap-bar i.green { background: var(--green); }

@@ -47,10 +47,23 @@ export function computeCapacity(annotated, runways, weather, arrHr = 0) {
     ? Math.round(((inbound.length - capacity15) / Math.max(1, aar)) * 60)
     : 0;
 
+  // Airport Departure Rate (ADR) — the same idea, time-based. Departure interval
+  // comes from the wake-on-departure mix (≥60 s runway occupancy). Runways that
+  // also take arrivals (DEP+ARR) share their slots, so they add only ~half a
+  // departure stream.
+  const depRwys = runways.filter((r) => r.role.includes('DEP'));
+  const departures = annotated.filter((a) => a.phase === 'DEPARTURE');
+  const gaps = departures.map((a) => a.reqDepGapSec).filter((x) => x != null);
+  const meanDepGapSec = Math.round(mean(gaps) ?? 75);
+  const dedicated = depRwys.filter((r) => r.role === 'DEP').length;
+  const depStreams = Math.max(1, dedicated + (depRwys.length - dedicated) * 0.5);
+  const adr = Math.round(depStreams * (3600 / Math.max(60, meanDepGapSec)) * weatherFactor);
+
   return {
     aar, perRunwayRate: Math.round(perRunwayRate), arrRwyCount: nRwy,
     meanSpacingNm, finalSpeedKt, weatherFactor, wxCat,
     inbound: inbound.length, arrHr,
     utilization, utilPct: Math.round(utilization * 100), status, delayMin,
+    adr, meanDepGapSec, depRwyCount: depRwys.length,
   };
 }

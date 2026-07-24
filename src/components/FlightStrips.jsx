@@ -80,6 +80,7 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
               <span><b>{convDist(a.distNm, settings.distance).toFixed(1)}</b>{distUnitLabel(settings.distance)}</span>
               {a.etaMin != null && a.phase !== 'DEPARTURE' && <span>ETA <b>{Math.round(a.etaMin)}m</b></span>}
               {a.reqSpacingNm && <span className={`spc ${a.wakeTight ? 'tight' : ''}`} title={`Required wake spacing behind ${a.leaderCs}`}>◂<b>{a.reqSpacingNm}</b>nm</span>}
+              {a.reqDepGapSec && <span className="spc" title={`Wake-on-departure spacing behind ${a.depLeaderCs}`}>◂<b>{Math.round(a.reqDepGapSec / 60 * 10) / 10}</b>min</span>}
             </div>
             <div className="strip-bot">
               {a.runway && <span className="rwy">RWY {a.runway}</span>}

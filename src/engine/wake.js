@@ -63,3 +63,20 @@ export function wakeSepNm(leaderCat, followerCat) {
   if (!leaderCat || !followerCat) return RADAR_MIN;
   return Math.max(RADAR_MIN, SEP[leaderCat]?.[followerCat] ?? RADAR_MIN);
 }
+
+// Departure wake separation is TIME-based (the vortices sink/drift behind the
+// departing aircraft), not distance-based — a following aircraft waits ~2 min
+// behind a super/heavy. Floored at a 60 s runway-occupancy minimum (one
+// departure per minute). Seconds, leader → follower.
+const OCCUPANCY_S = 60;
+const DEP_SEP = {
+  J: { J: 120, H: 120, M: 120, L: 180 },
+  H: { J: 90, H: 90, M: 120, L: 180 },
+  M: { J: 60, H: 60, M: 60, L: 120 },
+  L: { J: 60, H: 60, M: 60, L: 60 },
+};
+
+export function wakeDepartureSepSec(leaderCat, followerCat) {
+  if (!leaderCat || !followerCat) return OCCUPANCY_S;
+  return Math.max(OCCUPANCY_S, DEP_SEP[leaderCat]?.[followerCat] ?? OCCUPANCY_S);
+}

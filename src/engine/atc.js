@@ -6,7 +6,7 @@
 import { distNm, bearingDeg, velocityNmS, toLocalNm, cpa, angleDiff, windComponents, fmtAlt } from '../lib/geo.js';
 import { airlineName } from '../data/airports.js';
 import { octantOf } from './octant.js';
-import { wakeCat, wakeSepNm, WAKE_LABEL } from './wake.js';
+import { wakeCat, wakeSepNm, wakeDepartureSepSec, WAKE_LABEL } from './wake.js';
 
 export const PHASES = ['GROUND', 'DEPARTURE', 'ENROUTE', 'ARRIVAL', 'APPROACH', 'FINAL'];
 
@@ -289,6 +289,21 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
     .forEach((a, i) => {
       a.runway = depRwys.length ? depRwys[i % depRwys.length].activeEnd : null;
     });
+
+  // Wake-on-departure spacing: per runway, order climbing-out departures by
+  // altitude (highest = departed first = the leader) and give each follower the
+  // time it must be held behind the one ahead.
+  const depByRwy = {};
+  for (const a of annotated) {
+    if (a.phase === 'DEPARTURE' && a.runway) (depByRwy[a.runway] = depByRwy[a.runway] || []).push(a);
+  }
+  for (const q of Object.values(depByRwy)) {
+    q.sort((x, y) => (y.agl ?? 0) - (x.agl ?? 0)); // leader (highest/earliest) first
+    for (let i = 1; i < q.length; i++) {
+      q[i].reqDepGapSec = wakeDepartureSepSec(q[i - 1].wake, q[i].wake);
+      q[i].depLeaderCs = q[i - 1].callsign;
+    }
+  }
 
   // Gate allocation for anything committed to landing.
   const occupied = new Set(Object.values(gateMap));

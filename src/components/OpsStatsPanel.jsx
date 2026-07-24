@@ -20,7 +20,10 @@ export default function OpsStatsPanel({ opsStats, kpis, capacity }) {
             <span>Acceptance rate <em>est.</em></span>
             <span className={`cap-status ${STATUS_CLASS[c.status] || 'green'}`}>{c.status}</span>
           </div>
-          <div className="cap-main"><b>{c.aar}</b><span>arrivals / hr accepted</span></div>
+          <div className="cap-main">
+            <div className="cap-rate"><b>{c.aar}</b><span>AAR · arr/hr</span></div>
+            <div className="cap-rate"><b>{c.adr}</b><span>ADR · dep/hr</span></div>
+          </div>
           <div className="cap-bar"><i className={STATUS_CLASS[c.status] || 'green'} style={{ width: `${Math.min(100, c.utilPct)}%` }} /></div>
           <div className="cap-rows">
             <span>Inbound <b>{c.inbound}</b></span>

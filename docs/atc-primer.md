@@ -132,6 +132,23 @@ runs beyond ~15 min of capacity — an estimated delay. Real AARs are declared b
 facility, so ours is clearly labelled an estimate; what matters is that it *reacts*
 to config, wake and weather the way a real one does.
 
+## Departures — the mirror of arrivals, but in time
+
+Where arrival spacing is measured in **distance** (nm on final), departure spacing is
+measured in **time**: the wake vortices sink and drift behind a departing aircraft, so a
+following departure is held **~2 minutes behind a super/heavy** (less between equals),
+floored at a ~60 s runway-occupancy minimum. *(src/engine/wake.js → wakeDepartureSepSec;
+shown on the departure strips as the gap behind the aircraft ahead.)*
+
+That time spacing gives the **Airport Departure Rate (ADR)** — the departures/hour the
+field can push — the same way wake gives the AAR. A runway that also lands traffic
+(DEP+ARR) shares its slots, so it adds only about half a departure stream. Tower Ops shows
+the AAR and ADR side by side.
+
+Two things we deliberately **don't** fake: real **SID routes** (the published departure
+paths) and **EDCT/CTOT** slots from flow management aren't in free/keyless data, so they're
+left out rather than invented.
+
 ## Roadmap (what's modelled, what's next)
 
 - ✅ TRACON layer, observed-config inference, CPA separation, ETA sequencing, gates, comms.
@@ -139,7 +156,9 @@ to config, wake and weather the way a real one does.
 - ✅ **Airport Acceptance Rate (AAR)** — capacity from config + wake mix + weather, with
   load and an estimated delay.
 - ✅ **Touchdown-ETA model — live** (worker-authoritative), feedback-safe; go-around ETAs voided.
-- ⏭ Departure flow (SIDs, wake-on-departure, EDCT), low-visibility capacity, surface movement.
+- ✅ **Departure flow** — wake-on-departure time spacing + Airport Departure Rate (ADR).
+  (SIDs and EDCT slots left out — not in free data.)
+- ⏭ Low-visibility capacity refinements, surface movement / runway-incursion layer.
 
 ## The touchdown-ETA model (why it, not runway)
 
