@@ -1,9 +1,12 @@
 import { Activity } from 'lucide-react';
 
-// Tower operations rates — movements observed by this console over the
-// trailing hour (arrivals + departures), like a tower's traffic count board.
-export default function OpsStatsPanel({ opsStats, kpis }) {
+// Tower operations rates — movements observed by this console over the trailing
+// hour (arrivals + departures) — plus the Airport Acceptance Rate (capacity).
+const STATUS_CLASS = { NOMINAL: 'green', BUSY: 'amber', SATURATED: 'red' };
+
+export default function OpsStatsPanel({ opsStats, kpis, capacity }) {
   const o = opsStats || {};
+  const c = capacity;
   return (
     <div className="panel wx-panel">
       <div className="panel-head">
@@ -11,6 +14,22 @@ export default function OpsStatsPanel({ opsStats, kpis }) {
         <span className="panel-title">Tower Ops</span>
         <span className="badge">{o.movHr ?? 0}/HR</span>
       </div>
+      {c && (
+        <div className="cap">
+          <div className="cap-head">
+            <span>Acceptance rate <em>est.</em></span>
+            <span className={`cap-status ${STATUS_CLASS[c.status] || 'green'}`}>{c.status}</span>
+          </div>
+          <div className="cap-main"><b>{c.aar}</b><span>arrivals / hr accepted</span></div>
+          <div className="cap-bar"><i className={STATUS_CLASS[c.status] || 'green'} style={{ width: `${Math.min(100, c.utilPct)}%` }} /></div>
+          <div className="cap-rows">
+            <span>Inbound <b>{c.inbound}</b></span>
+            <span>Spacing <b>{c.meanSpacingNm}nm</b></span>
+            <span>Wx <b>{c.wxCat}</b></span>
+            {c.delayMin > 0 ? <span className="cap-delay">Delay ~<b>{c.delayMin}m</b></span> : <span>Load <b>{c.utilPct}%</b></span>}
+          </div>
+        </div>
+      )}
       <div className="wx-grid">
         <div className="wx-cell">
           <div className="v">{o.arrHr ?? 0}</div>

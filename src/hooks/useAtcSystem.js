@@ -6,6 +6,7 @@ import { fetchTaf } from '../lib/forecast.js';
 import { buildOutlook } from '../engine/forecast.js';
 import { SimEngine } from '../lib/sim.js';
 import { allocateRunways, annotateAircraft, detectConflicts, generateEvents, computeKpis, inferActiveArrivals, departureEnd } from '../engine/atc.js';
+import { computeCapacity } from '../engine/capacity.js';
 import { PredictionTracker } from '../engine/predictions.js';
 import { runwayPrior } from '../engine/learning.js';
 import { trackerConfigured, TRACKED_HUBS, fetchGlobalScorecard, fetchGlobalModels, priorFnFromModels } from '../lib/globalModel.js';
@@ -310,6 +311,11 @@ export function useAtcSystem() {
     const busiest = Object.entries(byRwy).sort((a, b) => b[1] - a[1])[0] || null;
     return { arrHr: arr, depHr: dep, movHr: arr + dep, busiest: busiest ? { runway: busiest[0], n: busiest[1] } : null, tracking: log.length };
   }, [aircraft]);
+  // Airport Acceptance Rate (capacity) from config + wake mix + weather.
+  const capacity = useMemo(
+    () => computeCapacity(aircraft, runways, weather, opsStats.arrHr),
+    [aircraft, runways, weather, opsStats.arrHr],
+  );
   const selected = useMemo(() => aircraft.find((a) => a.id === selectedId) || null, [aircraft, selectedId]);
 
   // Show the global 24/7 scorecard for tracked hubs; fall back to the local
@@ -321,7 +327,7 @@ export function useAtcSystem() {
   return {
     airport, icao, setIcao,
     mode, source, forceSim, setForceSim,
-    weather, aircraft, runways, conflicts, decisions, comms, kpis, opsStats,
+    weather, aircraft, runways, conflicts, decisions, comms, kpis, opsStats, capacity,
     scorecard: shownScorecard, scoreScope, globalTotals, forecast,
     selected, selectedId, setSelectedId,
   };

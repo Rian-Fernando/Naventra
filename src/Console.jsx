@@ -118,7 +118,7 @@ export default function Console({ route }) {
                   </ResizablePanel>
                 )}
                 {panels.runways && <ResizablePanel id="runways"><RunwayPanel runways={atc.runways} /></ResizablePanel>}
-                {panels.ops && <ResizablePanel id="ops"><OpsStatsPanel opsStats={atc.opsStats} kpis={atc.kpis} /></ResizablePanel>}
+                {panels.ops && <ResizablePanel id="ops"><OpsStatsPanel opsStats={atc.opsStats} kpis={atc.kpis} capacity={atc.capacity} /></ResizablePanel>}
               </div>
             )}
 

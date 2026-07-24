@@ -110,12 +110,34 @@ Naventra surfaces them as scope alerts and floats them to the top of the strips.
 
 ---
 
+## Capacity — the Airport Acceptance Rate (AAR)
+
+The AAR is how many arrivals per hour the field can accept — the TRACON's core
+capacity number. Naventra estimates it from physics *(src/engine/capacity.js)*:
+
+> rate per runway ≈ **final-approach speed ÷ mean required wake spacing**,
+> then × the effective number of arrival streams × a weather factor.
+
+So the three things that actually move capacity all show up correctly:
+
+- **Wake mix** — a stream of heavies at 6 nm gives ~23/hr; mediums at 3 nm ~47/hr.
+- **Runway config** — more active arrival runways = more streams (dependent parallels
+  add ~0.65 of a stream each, not a full one).
+- **Weather** — VFR ×1.0, MVFR ×0.9, IFR ×0.8, LIFR ×0.62 (low-visibility procedures
+  force wider spacing and cut the rate).
+
+The Tower Ops panel shows the AAR, the current inbound queue, a load bar (recent
+landing rate ÷ AAR), the mean spacing and weather driving it, and — when the queue
+runs beyond ~15 min of capacity — an estimated delay. Real AARs are declared by the
+facility, so ours is clearly labelled an estimate; what matters is that it *reacts*
+to config, wake and weather the way a real one does.
+
 ## Roadmap (what's modelled, what's next)
 
 - ✅ TRACON layer, observed-config inference, CPA separation, ETA sequencing, gates, comms.
-- ✅ **Wake turbulence** categories + wake-aware final spacing (this section).
-- ⏭ **Airport Acceptance Rate (AAR)** — capacity from config + weather + wake mix, with
-  demand-vs-capacity and expected delay.
+- ✅ **Wake turbulence** categories + wake-aware final spacing.
+- ✅ **Airport Acceptance Rate (AAR)** — capacity from config + wake mix + weather, with
+  load and an estimated delay.
 - ⏭ **ETA / spacing model** — point the learning model at touchdown-time prediction
   (where weather, wake, speed and congestion genuinely help) rather than absolute runway.
 - ⏭ Departure flow (SIDs, wake-on-departure, EDCT), low-visibility capacity, surface movement.

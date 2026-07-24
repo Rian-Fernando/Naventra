@@ -759,6 +759,27 @@ body {
 .strip-mid .spc.tight { color: var(--amber); }
 .strip-mid .spc b { color: var(--text); }
 
+/* Tower Ops — Airport Acceptance Rate (capacity) */
+.cap { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.cap-head { display: flex; align-items: center; justify-content: space-between; font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.cap-head em { font-style: normal; font-size: 8px; color: var(--muted); opacity: 0.7; }
+.cap-status { font-family: var(--font-mono); font-size: 9px; padding: 2px 7px; border-radius: 10px; border: 1px solid; }
+.cap-status.green { color: var(--green); border-color: var(--green-dim); background: rgba(61, 220, 151, 0.08); }
+.cap-status.amber { color: var(--amber); border-color: rgba(255, 180, 84, 0.4); background: rgba(255, 180, 84, 0.08); }
+.cap-status.red { color: var(--red); border-color: rgba(255, 92, 92, 0.45); background: rgba(255, 92, 92, 0.1); }
+.cap-main { display: flex; align-items: baseline; gap: 8px; margin: 7px 0 8px; }
+.cap-main b { font-family: var(--font-display); font-size: 30px; font-weight: 600; color: var(--text); line-height: 1; }
+.cap-main span { font-size: 10px; color: var(--text-dim); }
+.cap-bar { height: 5px; border-radius: 3px; background: var(--line-bright); overflow: hidden; }
+.cap-bar i { display: block; height: 100%; border-radius: 3px; transition: width 0.4s; }
+.cap-bar i.green { background: var(--green); }
+.cap-bar i.amber { background: var(--amber); }
+.cap-bar i.red { background: var(--red); }
+.cap-rows { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 10px; color: var(--text-dim); }
+.cap-rows b { color: var(--text); font-family: var(--font-mono); }
+.cap-rows .cap-delay { color: var(--amber); }
+.cap-rows .cap-delay b { color: var(--amber); }
+
 .strip-top { display: flex; align-items: baseline; gap: 8px; }
 .strip-cs { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.04em; }
 .strip-type { font-size: 10px; color: var(--cyan); }

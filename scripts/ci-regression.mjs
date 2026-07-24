@@ -15,7 +15,7 @@ globalThis.localStorage = {
   setItem(k, v) { this._d[k] = v; },
 };
 
-const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior }, { buildOutlook }, { wakeCat, wakeSepNm }] = await Promise.all([
+const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior }, { buildOutlook }, { wakeCat, wakeSepNm }, { computeCapacity }] = await Promise.all([
   import('../src/lib/sim.js'),
   import('../src/data/airports.js'),
   import('../src/engine/atc.js'),
@@ -23,6 +23,7 @@ const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior },
   import('../src/engine/learning.js'),
   import('../src/engine/forecast.js'),
   import('../src/engine/wake.js'),
+  import('../src/engine/capacity.js'),
 ]);
 
 let failures = 0;
@@ -92,6 +93,19 @@ check('wake sep medium-behind-heavy = 5nm', wakeSepNm('H', 'M') === 5, `${wakeSe
 check('wake sep light-behind-super = 8nm', wakeSepNm('J', 'L') === 8, `${wakeSepNm('J', 'L')}`);
 check('wake sep floored at radar min 3nm', wakeSepNm('M', 'M') === 3, `${wakeSepNm('M', 'M')}`);
 check('wake sep unknown → radar min', wakeSepNm(null, 'M') === 3);
+
+// Capacity (AAR): responds to weather and stays in a sane range; low visibility
+// must lower the acceptance rate.
+{
+  const ap = AIRPORTS.KJFK;
+  const rwys = atc.allocateRunways(ap, { windDir: 250, windKt: 10 });
+  const ann = atc.annotateAircraft([], ap, rwys, {}, runwayPrior);
+  const vmc = computeCapacity(ann, rwys, { fltCat: 'VFR' }, 20);
+  const lifr = computeCapacity(ann, rwys, { fltCat: 'LIFR' }, 20);
+  check('AAR positive & sane', vmc.aar > 10 && vmc.aar < 200, `${vmc.aar}`);
+  check('low visibility lowers AAR', lifr.aar < vmc.aar, `LIFR ${lifr.aar} < VFR ${vmc.aar}`);
+  check('AAR exposes drivers', vmc.meanSpacingNm > 0 && vmc.finalSpeedKt > 0);
+}
 
 if (failures) {
   console.error(`\n${failures} regression check(s) failed`);
