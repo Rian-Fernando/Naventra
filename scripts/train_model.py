@@ -98,6 +98,33 @@ def train(X, y, k, iters=800, lr=0.3, lam=1e-3):
     return W
 
 
+# --------------------------------------------------------------- ETA model ---
+# The engine's straight-line touchdown ETA is systematically early (flights hold,
+# get vectored, fly into headwind). We learn the ETA error in seconds from
+# lock-time features and subtract it. The dominant, real signal is a per-airport
+# bias (the intercept); the features add a light correction.
+ETA_FEATURES = ["dist", "gs", "head", "arr_rate", "inbound", "sector", "heavy", "ifr", "sin_hour", "cos_hour", "bias"]
+ETA_CAP_S = 1800  # exclude |error| > 30 min — go-arounds / diversions / stale locks, not real ETAs
+ETA_OK_S = 150    # the scorecard's ±2.5 min window
+
+
+def eta_feat(r):
+    def g(k, d=0.0):
+        v = r.get(k)
+        return float(v) if v is not None else float(d)
+    hl = (r.get("hour_local") or 0) * math.pi / 12
+    return [g("dist_nm") / 16, g("gs_kt") / 200, g("head_kt") / 20, g("arr_rate_1h") / 60,
+            g("inbound_count") / 50, g("sector_count") / 200,
+            1.0 if r.get("wake") in ("H", "J") else 0.0,
+            1.0 if r.get("flt_cat") in ("IFR", "LIFR") else 0.0,
+            math.sin(hl), math.cos(hl), 1.0]
+
+
+def ridge(X, y, lam=1.0):
+    d = X.shape[1]
+    return np.linalg.solve(X.T @ X + lam * np.eye(d), X.T @ y)
+
+
 def load(path):
     if path and os.path.exists(path):
         return [json.loads(l) for l in open(path) if l.strip()]
@@ -140,6 +167,8 @@ def main():
                "|---|--:|--:|--:|--:|--:|:--:|"]
 
     mtot = etot = ntot = 0
+    eta_rows = []
+    eb_tot = ec_tot = en_tot = 0
     for ap, rs in sorted(clean_by_ap.items()):
         if len(rs) < MIN_ROWS:
             continue
@@ -174,6 +203,26 @@ def main():
                       f"{m_rand*100:.1f}% | {'✅' if adopt else '—'} |")
         mtot += (np.argmax(X[cut:] @ Wt, 1) == y[cut:]).sum(); etot += eng[cut:].sum(); ntot += n - cut
 
+        # --- touchdown ETA-error model for this airport ---
+        er = [r for r in rs if r.get("eta_err_sec") is not None and abs(r["eta_err_sec"]) <= ETA_CAP_S and r.get("gs_kt")]
+        if len(er) >= MIN_ROWS:
+            er.sort(key=lambda r: r["ts"])
+            Xe = np.array([eta_feat(r) for r in er]); ye = np.array([float(r["eta_err_sec"]) for r in er])
+            ne = len(er); ce = int(ne * 0.75)
+            We = ridge(Xe[:ce], ye[:ce])
+            resid = ye[ce:] - Xe[ce:] @ We
+            base_mae, corr_mae = float(np.abs(ye[ce:]).mean()), float(np.abs(resid).mean())
+            base_ok, corr_ok = float((np.abs(ye[ce:]) <= ETA_OK_S).mean()), float((np.abs(resid) <= ETA_OK_S).mean())
+            eta_adopt = corr_ok - base_ok >= 0.02
+            model["airports"][ap]["eta"] = {
+                "W": [round(v, 4) for v in ridge(Xe, ye).tolist()],
+                "baseMae": round(base_mae), "corrMae": round(corr_mae),
+                "baseOkPct": round(base_ok * 100, 1), "corrOkPct": round(corr_ok * 100, 1),
+                "adopt": bool(eta_adopt),
+            }
+            eta_rows.append((ap, ne, round(base_mae), round(corr_mae), round(base_ok * 100, 1), round(corr_ok * 100, 1), eta_adopt))
+            eb_tot += int((np.abs(ye[ce:]) <= ETA_OK_S).sum()); ec_tot += int((np.abs(resid) <= ETA_OK_S).sum()); en_tot += len(resid)
+
     pe = 100 * etot / ntot if ntot else 0
     pm = 100 * mtot / ntot if ntot else 0
     model["pooled"] = {"engine": round(pe, 1), "model": round(pm, 1), "testRows": ntot}
@@ -185,6 +234,29 @@ def main():
                "The engine reads which runways live traffic is actually using (observed-config inference), "
                "which is near-unbeatable for absolute runway choice; the model only adds signal at complex "
                "multi-runway fields. Regenerated weekly as data grows."]
+
+    # --- ETA report ---
+    model["etaFeatures"] = ETA_FEATURES
+    eta_outliers = sum(1 for r in rows if r.get("eta_err_sec") is not None and abs(r["eta_err_sec"]) > ETA_CAP_S)
+    if eta_rows:
+        pbo = 100 * eb_tot / en_tot if en_tot else 0
+        pco = 100 * ec_tot / en_tot if en_tot else 0
+        eta_adopted = [r[0] for r in eta_rows if r[6]]
+        report += ["", "## Touchdown ETA model", "",
+                   "The engine's straight-line ETA is systematically early (flights hold, get vectored, fly "
+                   "into headwind). This learns the ETA error in seconds from lock-time features and "
+                   "subtracts it. MAE = mean absolute error; ok% = within ±2.5 min (the scorecard window). "
+                   f"{eta_outliers:,} rows with |error| > 30 min (go-arounds / diversions / stale locks) "
+                   "were excluded as bad ETA labels.", "",
+                   "| Airport | rows | engine MAE | corrected MAE | engine ok% | corrected ok% | adopt |",
+                   "|---|--:|--:|--:|--:|--:|:--:|"]
+        for ap, ne, bm, cm, bo, co, ad in eta_rows:
+            report.append(f"| {ap} | {ne:,} | {bm}s | {cm}s | {bo}% | {co}% | {'✅' if ad else '—'} |")
+        report += ["", f"**Pooled ETA within ±2.5 min:** engine {pbo:.1f}% → corrected {pco:.1f}% "
+                   f"({pco-pbo:+.1f} pts).", "",
+                   f"**Adopt (corrected ok% beats engine by ≥2 pts):** "
+                   f"{', '.join(eta_adopted) if eta_adopted else 'none'}. The dominant correction is the "
+                   "per-airport bias — flights land late — and the features add a light adjustment."]
 
     os.makedirs("public", exist_ok=True); os.makedirs("docs", exist_ok=True)
     json.dump(model, open("public/model.json", "w"), separators=(",", ":"))

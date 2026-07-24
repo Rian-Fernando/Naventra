@@ -5,8 +5,9 @@ Run before any training so the model can never learn from bad or misread data.
     python3 scripts/test_train.py
 """
 import sys, os
+import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from train_model import validate, featurize, FEATURES
+from train_model import validate, featurize, FEATURES, eta_feat, ETA_FEATURES, ridge
 
 fails = 0
 def check(name, cond):
@@ -48,6 +49,15 @@ fg = {**CLEAN}; fg.pop("gust_kt")
 check("missing gust → 0 (no gust)", featurize(fg)[FEATURES.index("gust_kt")] == 0.0)
 
 check("featurize survives all-missing context", len(featurize({"octant": 0})) == len(FEATURES))
+
+# --- ETA model: features + ridge solver -------------------------------------
+check("eta feature length matches", len(eta_feat(CLEAN)) == len(ETA_FEATURES))
+check("eta features finite", all(isinstance(x, float) and x == x for x in eta_feat(CLEAN)))
+check("eta featurize survives missing context", len(eta_feat({})) == len(ETA_FEATURES))
+_rng = np.random.default_rng(0)
+_X = _rng.normal(size=(200, 3)); _X[:, 2] = 1.0
+_w = np.array([2.0, -1.0, 5.0])
+check("ridge recovers a linear fit", np.allclose(ridge(_X, _X @ _w, lam=1e-6), _w, atol=0.05))
 
 print()
 if fails:

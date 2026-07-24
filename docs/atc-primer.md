@@ -138,6 +138,25 @@ to config, wake and weather the way a real one does.
 - ✅ **Wake turbulence** categories + wake-aware final spacing.
 - ✅ **Airport Acceptance Rate (AAR)** — capacity from config + wake mix + weather, with
   load and an estimated delay.
-- ⏭ **ETA / spacing model** — point the learning model at touchdown-time prediction
-  (where weather, wake, speed and congestion genuinely help) rather than absolute runway.
+- ✅ **Touchdown-ETA model (validated offline)** — see below.
+- ⏭ **Live ETA integration** — apply the correction to the graded prediction, carefully
+  (see the feedback-loop note below).
 - ⏭ Departure flow (SIDs, wake-on-departure, EDCT), low-visibility capacity, surface movement.
+
+## The touchdown-ETA model (why it, not runway)
+
+The engine's ETA is straight-line distance ÷ speed, so it's blind to holding, vectoring
+and headwind — flights land **late** (median +147s at Heathrow, which stacks). Pointing
+the learning model at the **ETA error** (a regression on lock-time features) is where ML
+genuinely helps: on held-out recent data it lifts "within ±2.5 min" from **75.8% → 89.8%
+(+14 pts)** and cuts mean error roughly in half, at *every* airport. The dominant signal
+is a stable per-airport bias (flights hold year-round — not a seasonal artifact); features
+add a light adjustment. *(scripts/train_model.py; report in docs/model-report.md)*
+
+**Why it isn't live yet — a real ML-systems trap, worth understanding.** If we apply the
+correction to the *graded* prediction and then retrain on the newly-corrected data, the
+model would see near-zero error, learn a near-zero bias, and on the next deploy the
+correction would vanish — the error returns, the next retrain re-learns the bias, and it
+oscillates. The correct design records the **raw** engine error for training while grading
+and displaying the **corrected** ETA — so the model always learns the full bias and the
+correction stays stable. That's the next step, done deliberately rather than rushed.
