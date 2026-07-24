@@ -184,7 +184,7 @@ export class PredictionTracker {
     }
 
     const items = gradeItems(
-      { predRunway: o.predRunway, predEtaTs: o.predEtaTs, sampleSeq: o.sample.seq },
+      { predRunway: o.predRunway, predEtaTs: o.predEtaTs, rawEtaTs: o.rawEtaTs, sampleSeq: o.sample.seq },
       actualRunway, landedTs, arrEndsNow
     );
 

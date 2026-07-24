@@ -6,6 +6,8 @@ import { AIRPORTS } from '../../src/data/airports.js';
 import { allocateRunways, annotateAircraft, inferActiveArrivals, departureEnd } from '../../src/engine/atc.js';
 import { octantOf } from '../../src/engine/octant.js';
 import { classifyLandingRunway, gradeItems } from '../../src/engine/grading.js';
+import { etaCorrectionSec, ETA_OUTLIER_MS } from '../../src/engine/etaModel.js';
+import ETA_MODEL from '../../public/model.json';
 import {
   loadModel, priorFromModel, recordLandingIntoModel, etaBiasSec,
   loadOpen, upsertOpenStmt, deleteOpenStmt, recordLandingStmt, bumpStatsStmt, saveModelStmt,
@@ -160,7 +162,7 @@ export async function tickAirport(env, icao) {
     if (o.sample) {
       recordLandingIntoModel(model, o.lockOct, actualRunway, (landedTs - o.rawEtaTs) / 1000);
       const items = gradeItems(
-        { predRunway: o.predRunway, predEtaTs: o.predEtaTs, sampleSeq: o.sample.seq },
+        { predRunway: o.predRunway, predEtaTs: o.predEtaTs, rawEtaTs: o.rawEtaTs, sampleSeq: o.sample.seq },
         actualRunway, landedTs, arrEnds
       );
       landingEntries.push({ icao, iata: airport.iata, ts: landedTs, callsign: o.callsign, items });
@@ -182,7 +184,7 @@ export async function tickAirport(env, icao) {
             runway_ok: actualRunway ? (runwayOk ? 1 : 0) : null,
             config_ok: actualRunway ? (arrEnds.includes(actualRunway) ? 1 : 0) : null,
             eta_err_sec: etaErrSec,
-            eta_ok: Math.abs(landedTs - o.predEtaTs) <= 150000 ? 1 : 0,
+            eta_ok: Math.abs(landedTs - o.rawEtaTs) > ETA_OUTLIER_MS ? null : (Math.abs(landedTs - o.predEtaTs) <= 150000 ? 1 : 0),
             seq_at_land: o.sample.seq ?? null,
             seq_ok: o.sample.seq === 1 ? 1 : 0,
             land_ts: landedTs,
@@ -203,11 +205,16 @@ export async function tickAirport(env, icao) {
       if (wx && (ac.phase === 'APPROACH' || (ac.phase === 'FINAL' && ac.distNm > 4)) &&
           ac.runway && ac.etaMin != null && ac.distNm > 3.5 && ac.distNm < 26) {
         const rawEtaTs = now + ac.etaMin * 60000;
-        const predEtaTs = rawEtaTs + etaBiasSec(model) * 1000;
         const features = lockFeatures(ac, airport, {
           wx, rwys, arrEnds, depEnds, inbound: inboundCount, sector: sectorCount,
-          arrRate1h: arrRate, predRunway: ac.runway, predEtaTs,
+          arrRate1h: arrRate, predRunway: ac.runway, predEtaTs: rawEtaTs,
         });
+        // Graded ETA = raw + trained-model correction (adopted airports), else the
+        // online bias. rawEtaTs is kept for training so the model always learns
+        // the full error (no feedback loop). See src/engine/etaModel.js.
+        const corr = etaCorrectionSec(ETA_MODEL, icao, features);
+        const predEtaTs = rawEtaTs + (corr != null ? corr : etaBiasSec(model)) * 1000;
+        features.pred_eta_ts = predEtaTs;
         const rec = {
           id: ac.id, callsign: ac.callsign, lockTs: now, lockOct: octantOf(ac.brgFromField),
           predRunway: ac.runway, rawEtaTs, predEtaTs,

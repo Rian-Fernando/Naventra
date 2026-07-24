@@ -15,7 +15,7 @@ globalThis.localStorage = {
   setItem(k, v) { this._d[k] = v; },
 };
 
-const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior }, { buildOutlook }, { wakeCat, wakeSepNm }, { computeCapacity }] = await Promise.all([
+const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior }, { buildOutlook }, { wakeCat, wakeSepNm }, { computeCapacity }, { etaVec, etaCorrectionSec }, grading] = await Promise.all([
   import('../src/lib/sim.js'),
   import('../src/data/airports.js'),
   import('../src/engine/atc.js'),
@@ -24,6 +24,8 @@ const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior },
   import('../src/engine/forecast.js'),
   import('../src/engine/wake.js'),
   import('../src/engine/capacity.js'),
+  import('../src/engine/etaModel.js'),
+  import('../src/engine/grading.js'),
 ]);
 
 let failures = 0;
@@ -105,6 +107,27 @@ check('wake sep unknown → radar min', wakeSepNm(null, 'M') === 3);
   check('AAR positive & sane', vmc.aar > 10 && vmc.aar < 200, `${vmc.aar}`);
   check('low visibility lowers AAR', lifr.aar < vmc.aar, `LIFR ${lifr.aar} < VFR ${vmc.aar}`);
   check('AAR exposes drivers', vmc.meanSpacingNm > 0 && vmc.finalSpeedKt > 0);
+}
+
+// ETA model serving: feature vector matches training length, correction is
+// clamped, and it only fires for an adopted airport.
+check('etaVec length = 11', etaVec({}).length === 11);
+check('etaVec all finite', etaVec({ dist_nm: 10, gs_kt: 140, head_kt: 8, wake: 'H', flt_cat: 'IFR', hour_local: 14 }).every(Number.isFinite));
+{
+  const synth = { airports: { TEST: { eta: { adopt: true, W: new Array(11).fill(1) } } } };
+  const corr = etaCorrectionSec(synth, 'TEST', { dist_nm: 16, gs_kt: 200, head_kt: 20 });
+  check('eta correction is a clamped number', typeof corr === 'number' && corr >= -600 && corr <= 900, `${corr}`);
+  check('eta correction null when no model', etaCorrectionSec(synth, 'NOPE', {}) === null);
+  check('eta correction null when not adopted', etaCorrectionSec({ airports: { X: { eta: { adopt: false, W: [1] } } } }, 'X', {}) === null);
+}
+
+// ETA outlier void: a landing >30 min off the raw estimate is not graded.
+{
+  const t = 1_700_000_000_000;
+  const normal = grading.gradeItems({ predRunway: '22L', predEtaTs: t, rawEtaTs: t, sampleSeq: 1 }, '22L', t + 60_000, ['22L']);
+  const outlier = grading.gradeItems({ predRunway: '22L', predEtaTs: t, rawEtaTs: t, sampleSeq: 1 }, '22L', t + 40 * 60_000, ['22L']);
+  check('normal landing grades ETA', normal.some((i) => i.cat === 'eta'));
+  check('30min+ outlier voids ETA grade', !outlier.some((i) => i.cat === 'eta'));
 }
 
 if (failures) {

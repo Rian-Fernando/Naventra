@@ -45,7 +45,7 @@ export function classifyLandingRunway(sample, airport) {
 
 // Grade a locked prediction against the observed landing. Returns the graded
 // items array (used by both the browser and the D1 tracker).
-export function gradeItems({ predRunway, predEtaTs, sampleSeq }, actualRunway, landedTs, arrEndsNow) {
+export function gradeItems({ predRunway, predEtaTs, rawEtaTs, sampleSeq }, actualRunway, landedTs, arrEndsNow) {
   const items = [];
   if (actualRunway) {
     items.push({ cat: 'runway', predicted: predRunway, actual: actualRunway, ok: actualRunway === predRunway });
@@ -53,13 +53,18 @@ export function gradeItems({ predRunway, predEtaTs, sampleSeq }, actualRunway, l
       items.push({ cat: 'config', predicted: 'in ARR set', actual: actualRunway, ok: arrEndsNow.includes(actualRunway) });
     }
   }
-  const etaErrMs = landedTs - predEtaTs;
-  items.push({
-    cat: 'eta',
-    predicted: new Date(predEtaTs).toISOString().slice(11, 16) + 'Z',
-    actual: `${etaErrMs >= 0 ? '+' : '−'}${Math.round(Math.abs(etaErrMs) / 1000)}s`,
-    ok: Math.abs(etaErrMs) <= ETA_TOLERANCE_MS,
-  });
+  // A landing >30 min off the raw estimate is a go-around / diversion / extreme
+  // hold, not a clean ETA test — don't grade the ETA (it isn't a miss).
+  const etaOutlier = rawEtaTs != null && Math.abs(landedTs - rawEtaTs) > 1800 * 1000;
+  if (!etaOutlier) {
+    const etaErrMs = landedTs - predEtaTs;
+    items.push({
+      cat: 'eta',
+      predicted: new Date(predEtaTs).toISOString().slice(11, 16) + 'Z',
+      actual: `${etaErrMs >= 0 ? '+' : '−'}${Math.round(Math.abs(etaErrMs) / 1000)}s`,
+      ok: Math.abs(etaErrMs) <= ETA_TOLERANCE_MS,
+    });
+  }
   if (sampleSeq != null) {
     items.push({ cat: 'sequence', predicted: '#1 on runway', actual: `was #${sampleSeq}`, ok: sampleSeq === 1 });
   }
