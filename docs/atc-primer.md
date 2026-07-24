@@ -149,6 +149,19 @@ Two things we deliberately **don't** fake: real **SID routes** (the published de
 paths) and **EDCT/CTOT** slots from flow management aren't in free/keyless data, so they're
 left out rather than invented.
 
+## Surface safety — runway incursions
+
+The most serious ground risk is a **runway incursion**: an aircraft (or vehicle) on a
+runway when another is landing or departing on it. Real towers watch this with surface
+radar (**ASDE-X**) and automated **Runway Status Lights**. Naventra flags the clearest
+case — a ground aircraft sitting on or crossing an active runway while another is on
+**short final (< 2.5 nm)** to it — as an advisory on the scope. *(src/engine/surface.js)*
+
+**Honest limitation:** ADS-B ground coverage is **partial** — many aircraft stop
+transmitting a position once on the surface, and MLAT fill-in is patchy. So this sees only
+what's actually broadcasting; it's an advisory over available data, not a certified
+surface-surveillance system. It is labelled as such and never presented as authoritative.
+
 ## Roadmap (what's modelled, what's next)
 
 - ✅ TRACON layer, observed-config inference, CPA separation, ETA sequencing, gates, comms.
@@ -158,7 +171,8 @@ left out rather than invented.
 - ✅ **Touchdown-ETA model — live** (worker-authoritative), feedback-safe; go-around ETAs voided.
 - ✅ **Departure flow** — wake-on-departure time spacing + Airport Departure Rate (ADR).
   (SIDs and EDCT slots left out — not in free data.)
-- ⏭ Low-visibility capacity refinements, surface movement / runway-incursion layer.
+- ✅ **Surface safety** — runway-incursion advisory (partial ADS-B ground coverage).
+- ⏭ Low-visibility capacity refinements; richer surface picture if better ground data appears.
 
 ## The touchdown-ETA model (why it, not runway)
 

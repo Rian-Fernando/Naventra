@@ -20,8 +20,9 @@ const LEGEND = [
 // Shared chrome for the scope: view toggle (3D / 2D), range, trails, labels,
 // category filters (legend checkboxes) and an airline filter.
 export default function RadarPanel(props) {
-  const { airport, mode, aircraft, conflicts, view, weather } = props;
+  const { airport, mode, aircraft, conflicts, view, weather, surface } = props;
   const wxfx = classifyWeather(weather);
+  const incursions = surface?.incursions || [];
   const { settings } = useSettings();
   const scope = view?.prefs.radarView || '3D';
   const setScope = view?.setRadarView || (() => {});
@@ -56,14 +57,18 @@ export default function RadarPanel(props) {
           : <RadarScope {...viewProps} />}
         <WeatherFX weather={weather} />
         {wxfx.kind !== 'clear' && <div className={`wx-chip wx-${wxfx.kind}`}>{wxfx.label}</div>}
-        {emergencies.length > 0 && (
+        {(emergencies.length > 0 || incursions.length > 0) && (
           <div className="radar-alert" role="alert">
             {emergencies.slice(0, 2).map(({ ac, info }) => (
               <button key={ac.id} className="ra-item" onClick={() => props.onSelect(ac.id)}>
                 <AlertTriangle size={12} /> {info.label} · {ac.callsign}{ac.squawk ? ` · SQ ${ac.squawk}` : ''}
               </button>
             ))}
-            {emergencies.length > 2 && <span className="ra-more">+{emergencies.length - 2}</span>}
+            {incursions.slice(0, 2).map((inc, i) => (
+              <div key={`inc${i}`} className={`ra-item ${inc.severity === 'critical' ? '' : 'ra-warn'}`} title="Runway incursion advisory (partial ADS-B ground coverage)">
+                <AlertTriangle size={12} /> RWY {inc.runway}: {inc.occupant} on runway · {inc.threat} on final {inc.distNm.toFixed(1)}nm
+              </div>
+            ))}
           </div>
         )}
         <SearchBox aircraft={aircraft} onSelect={props.onSelect} />

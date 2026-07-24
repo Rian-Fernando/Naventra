@@ -27,6 +27,7 @@ const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior },
   import('../src/engine/etaModel.js'),
   import('../src/engine/grading.js'),
 ]);
+const { detectSurface } = await import('../src/engine/surface.js');
 
 let failures = 0;
 const check = (name, cond, detail = '') => {
@@ -131,6 +132,19 @@ check('etaVec all finite', etaVec({ dist_nm: 10, gs_kt: 140, head_kt: 8, wake: '
   const outlier = grading.gradeItems({ predRunway: '22L', predEtaTs: t, rawEtaTs: t, sampleSeq: 1 }, '22L', t + 40 * 60_000, ['22L']);
   check('normal landing grades ETA', normal.some((i) => i.cat === 'eta'));
   check('30min+ outlier voids ETA grade', !outlier.some((i) => i.cat === 'eta'));
+}
+
+// Surface: a ground aircraft on a runway with an arrival on short final is an
+// incursion; a clear runway is not.
+{
+  const ap = { lat: 40, lon: -73, elevFt: 0 };
+  const rwy = { activeEnd: '18', id: '18/36', activeHdg: 0, lenFt: 10000, offX: 0, offY: 0, role: 'DEP+ARR' };
+  const onRwy = { callsign: 'GND1', onGround: true, lat: 40, lon: -73 };
+  const arr = { callsign: 'ARR1', onGround: false, phase: 'FINAL', runway: '18', distNm: 1.0, lat: 40.02, lon: -73 };
+  const s1 = detectSurface([onRwy, arr], ap, [rwy]);
+  check('surface: incursion detected', s1.incursions.length === 1 && s1.incursions[0].severity === 'critical');
+  check('surface: occupancy detected', s1.occupancy.length === 1);
+  check('surface: clear runway = no incursion', detectSurface([arr], ap, [rwy]).incursions.length === 0);
 }
 
 if (failures) {

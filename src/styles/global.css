@@ -458,6 +458,8 @@ body {
 .ra-item svg { color: var(--red); flex-shrink: 0; }
 .ra-item:hover { filter: brightness(1.25); }
 .ra-more { font-family: var(--font-mono); font-size: 10px; color: var(--red); background: rgba(38, 8, 8, 0.9); border: 1px solid var(--red); border-radius: 5px; padding: 4px 7px; }
+.ra-item.ra-warn { cursor: default; background: rgba(40, 27, 8, 0.92); border-color: var(--amber); color: #ffe6c2; box-shadow: 0 0 16px rgba(255, 180, 84, 0.4); }
+.ra-item.ra-warn svg { color: var(--amber); }
 
 /* ambient weather overlay + condition chip */
 .weather-fx { position: absolute; inset: 0; z-index: 3; pointer-events: none; }

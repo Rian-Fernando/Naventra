@@ -127,7 +127,7 @@ export default function Console({ route }) {
                 <RadarPanel
                   airport={atc.airport} aircraft={atc.aircraft} conflicts={atc.conflicts}
                   runways={atc.runways} selectedId={atc.selectedId} onSelect={atc.setSelectedId}
-                  mode={atc.mode} view={view} weather={atc.weather}
+                  mode={atc.mode} view={view} weather={atc.weather} surface={atc.surface}
                 />
                 <AircraftDetail aircraft={atc.selected} airport={atc.airport} onClose={() => atc.setSelectedId(null)} />
               </div>

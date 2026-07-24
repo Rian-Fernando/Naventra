@@ -7,6 +7,7 @@ import { buildOutlook } from '../engine/forecast.js';
 import { SimEngine } from '../lib/sim.js';
 import { allocateRunways, annotateAircraft, detectConflicts, generateEvents, computeKpis, inferActiveArrivals, departureEnd } from '../engine/atc.js';
 import { computeCapacity } from '../engine/capacity.js';
+import { detectSurface } from '../engine/surface.js';
 import { PredictionTracker } from '../engine/predictions.js';
 import { runwayPrior } from '../engine/learning.js';
 import { trackerConfigured, TRACKED_HUBS, fetchGlobalScorecard, fetchGlobalModels, priorFnFromModels } from '../lib/globalModel.js';
@@ -316,6 +317,8 @@ export function useAtcSystem() {
     () => computeCapacity(aircraft, runways, weather, opsStats.arrHr),
     [aircraft, runways, weather, opsStats.arrHr],
   );
+  // Ground-safety: runway occupancy + incursion advisories (partial ADS-B).
+  const surface = useMemo(() => detectSurface(aircraft, airport, runways), [aircraft, airport, runways]);
   const selected = useMemo(() => aircraft.find((a) => a.id === selectedId) || null, [aircraft, selectedId]);
 
   // Show the global 24/7 scorecard for tracked hubs; fall back to the local
@@ -327,7 +330,7 @@ export function useAtcSystem() {
   return {
     airport, icao, setIcao,
     mode, source, forceSim, setForceSim,
-    weather, aircraft, runways, conflicts, decisions, comms, kpis, opsStats, capacity,
+    weather, aircraft, runways, conflicts, decisions, comms, kpis, opsStats, capacity, surface,
     scorecard: shownScorecard, scoreScope, globalTotals, forecast,
     selected, selectedId, setSelectedId,
   };
