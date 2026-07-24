@@ -8,6 +8,7 @@
 // operationally stressed will this airport be?", which is what drives real
 // delays and cancellations.
 import { allocateRunways } from './atc.js';
+import { approachCategory } from './capacity.js';
 
 // Minimum crosswind achievable across the arrival runways for a given wind.
 function operativeCrosswind(airport, windDir, windKt) {
@@ -47,16 +48,24 @@ export function disruptionRisk(airport, period) {
   return { pct, level, reasons, xwind: Math.round(xwind) };
 }
 
-// One summary row per forecast period: projected config, disruption risk, and
-// whether the runway configuration flips vs the previous period.
+// One summary row per forecast period: projected config, approach category (and
+// the capacity that implies), disruption risk, and whether the runway config or
+// approach category changes vs the previous period.
 export function buildOutlook(airport, periods) {
   let prevLabel = null;
+  let prevCat = null;
   return periods.map((p) => {
     const { ends } = operativeCrosswind(airport, p.windDir, p.windKt);
     const config = ends.join(' / ') || '—';
     const risk = disruptionRisk(airport, p);
+    const app = approachCategory(p.ceilingFt, p.visibSm);
     const flip = prevLabel != null && config !== prevLabel;
+    const catDrop = prevCat != null && app.factor < prevCat;
     prevLabel = config;
-    return { ...p, config, arrEnds: ends, risk, flip };
+    prevCat = app.factor;
+    return {
+      ...p, config, arrEnds: ends, risk, flip,
+      appCat: app.cat, lvp: app.lvp, capacityPct: Math.round(app.factor * 100), catDrop,
+    };
   });
 }

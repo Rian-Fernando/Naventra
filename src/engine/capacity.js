@@ -28,8 +28,9 @@ function visSmOf(w) {
 
 // Operational approach category from ceiling + visibility — the real driver of
 // capacity loss. Below CAT I, Low-Visibility Procedures protect the ILS critical
-// area (wider spacing) and the acceptance rate drops sharply.
-function approachCategory(ceilingFt, visSm) {
+// area (wider spacing) and the acceptance rate drops sharply. Exported so the
+// forecast can project capacity forward from the TAF.
+export function approachCategory(ceilingFt, visSm) {
   const c = ceilingFt ?? 9999;
   const v = visSm ?? 10;
   if (c < 200 || v < 0.5) return { cat: 'CAT III', lvp: true, factor: 0.5 };

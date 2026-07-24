@@ -169,6 +169,11 @@ CAT III), and drops the AAR accordingly; Tower Ops shows the approach category a
 flag. *(src/engine/capacity.js → approachCategory)* We don't have live **RVR** (runway
 visual range) in the basic METAR, so ceiling + prevailing visibility is the honest proxy.
 
+The **Weather Outlook** projects this forward from the TAF: each forecast period shows its
+approach category and the capacity it implies (and flags an LVP period), so you can see a
+capacity drop — fog rolling in, ceiling lowering — *coming* before it hits, not just once
+it's here. *(src/engine/forecast.js → buildOutlook)*
+
 ## Surface safety — runway incursions
 
 The most serious ground risk is a **runway incursion**: an aircraft (or vehicle) on a

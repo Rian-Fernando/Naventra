@@ -84,6 +84,8 @@ check('airport data integrity', failures === 0 || true); // summarized above
   check('forecast calm = LOW risk', out[0].risk.level === 'LOW', `${out[0].risk.pct}%`);
   check('forecast storm = HIGH risk', out[1].risk.level === 'HIGH', `${out[1].risk.pct}%`);
   check('forecast produces a config label', !!out[0].config && out[0].config !== '—', out[0].config);
+  check('forecast projects VMC when clear', out[0].appCat === 'VMC', out[0].appCat);
+  check('forecast projects low-vis category + LVP', out[1].lvp === true && out[1].capacityPct < 100, `${out[1].appCat} ${out[1].capacityPct}%`);
 }
 
 // Wake turbulence: categories from type + the separation matrix (floored at the

@@ -46,6 +46,11 @@ export default function ForecastPanel({ forecast, airport }) {
                   {r.gustKt ? `G${r.gustKt}` : ''}kt
                 </span>
               </div>
+              {r.appCat !== 'VMC' && (
+                <div className={`fc-cap ${r.lvp ? 'lvp' : ''}`}>
+                  {r.catDrop && <ArrowRight size={10} />}{r.appCat} · ~{r.capacityPct}% capacity{r.lvp ? ' · LVP' : ''}
+                </div>
+              )}
               {r.risk.reasons.length > 0 && (
                 <div className="fc-reasons">{r.risk.reasons.join(' · ')}</div>
               )}
