@@ -21,6 +21,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install numpy
+      - name: Data-pipeline self-tests
+        run: python3 scripts/test_train.py
       - name: Train + evaluate
         run: python3 scripts/train_model.py
       - name: Commit refreshed model
