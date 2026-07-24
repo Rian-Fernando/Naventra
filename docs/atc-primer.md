@@ -138,9 +138,7 @@ to config, wake and weather the way a real one does.
 - ✅ **Wake turbulence** categories + wake-aware final spacing.
 - ✅ **Airport Acceptance Rate (AAR)** — capacity from config + wake mix + weather, with
   load and an estimated delay.
-- ✅ **Touchdown-ETA model (validated offline)** — see below.
-- ⏭ **Live ETA integration** — apply the correction to the graded prediction, carefully
-  (see the feedback-loop note below).
+- ✅ **Touchdown-ETA model — live** (worker-authoritative), feedback-safe; go-around ETAs voided.
 - ⏭ Departure flow (SIDs, wake-on-departure, EDCT), low-visibility capacity, surface movement.
 
 ## The touchdown-ETA model (why it, not runway)
@@ -153,10 +151,11 @@ genuinely helps: on held-out recent data it lifts "within ±2.5 min" from **75.8
 is a stable per-airport bias (flights hold year-round — not a seasonal artifact); features
 add a light adjustment. *(scripts/train_model.py; report in docs/model-report.md)*
 
-**Why it isn't live yet — a real ML-systems trap, worth understanding.** If we apply the
-correction to the *graded* prediction and then retrain on the newly-corrected data, the
-model would see near-zero error, learn a near-zero bias, and on the next deploy the
-correction would vanish — the error returns, the next retrain re-learns the bias, and it
-oscillates. The correct design records the **raw** engine error for training while grading
-and displaying the **corrected** ETA — so the model always learns the full bias and the
-correction stays stable. That's the next step, done deliberately rather than rushed.
+**How it's served safely — a real ML-systems trap avoided.** If we applied the correction
+to the *graded* prediction and then retrained on the newly-corrected data, the model would
+see near-zero error, learn a near-zero bias, and on the next deploy the correction would
+vanish — oscillating. So the always-on worker (the authoritative grader for JFK/LAX/LHR)
+grades `predEtaTs = raw ETA + model correction`, but **records the raw error for training**
+— the model always learns the full bias, and the correction stays stable. Go-arounds and
+diversions (a landing >30 min off the raw estimate) are **not graded** as ETA misses.
+*(src/engine/etaModel.js, worker/src/tracker.js, src/engine/grading.js)*
