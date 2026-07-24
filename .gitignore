@@ -10,3 +10,7 @@ worker/.wrangler/
 .vercel
 .env*
 scripts/.oa/
+
+# Python
+__pycache__/
+*.pyc
