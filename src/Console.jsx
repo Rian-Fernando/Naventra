@@ -19,6 +19,7 @@ import ResizablePanel, { ColResizer, RowResizer } from './components/ResizablePa
 import Guide from './pages/Guide.jsx';
 import Tour from './components/Tour.jsx';
 import { SettingsProvider } from './hooks/useSettings.jsx';
+import { applyMeta } from './lib/seo.js';
 
 // The live console (routes /live and /guide). Kept separate from the marketing
 // landing page so visiting "/" never spins up the ADS-B engine or WebGL radar.
@@ -28,9 +29,17 @@ export default function Console({ route }) {
   const onGuide = route.startsWith('/guide');
 
   useEffect(() => {
-    const link = document.querySelector('link[rel="canonical"]');
-    if (link) link.href = `https://naventra.rianfernando.com${onGuide ? '/guide' : '/live'}`;
-    document.title = onGuide ? "Operator's Guide — Naventra" : 'Live Console — Naventra';
+    applyMeta(onGuide
+      ? {
+          path: '/guide',
+          title: "Operator's Guide — Naventra",
+          description: "The Operator's Guide to Naventra: how the AI reads live ADS-B traffic, allocates runways from the wind, sequences arrivals, monitors separation, and grades every prediction against real landings — with the ATC terms and codes explained.",
+        }
+      : {
+          path: '/live',
+          title: 'Live Console — Naventra',
+          description: 'The live Naventra console: watch an autonomous engine sequence real ADS-B arrivals, allocate runways from live weather, monitor separation, and grade its own predictions in real time at JFK, LAX and London Heathrow.',
+        });
   }, [onGuide]);
 
   // Keyboard shortcuts: [ ] cycle facility · 2/3 scope · f fullscreen.

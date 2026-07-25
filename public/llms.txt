@@ -1,0 +1,33 @@
+# Naventra
+
+> Naventra is an AI-native air traffic control console that works real, live ADS-B traffic around the world's busiest airports (New York JFK, Los Angeles LAX, London Heathrow and more). An autonomous engine sequences arrivals, allocates runways from live weather, monitors separation, and generates radio phraseology — then locks each prediction and grades itself against what actually happens, publishing an honest, auditable accuracy score 24/7. It is a free, independent portfolio project built by Rian Fernando, and a demonstration only — not a certified system for operational or navigational use.
+
+## What it does
+
+Naventra ingests live aircraft positions and weather, runs a controller's decision loop, and continuously measures itself against reality:
+
+- Streams real ADS-B transponder data and live METAR/TAF weather from free, keyless, public sources.
+- Allocates the active runway configuration from head/crosswind, sequences the arrival flow, assigns gates, and monitors separation with closest-point-of-approach math.
+- Predicts each flight's runway, touchdown time and landing order, locks the prediction when the aircraft commits to final, then grades it against the observed landing.
+- Runs an always-on cloud model that learns from every real landing, so accuracy improves on its own.
+
+## Key features
+
+- [Live console](https://naventra.rianfernando.com/live) — the working radar, flight strips, and AI decision feed.
+- [Operator's Guide](https://naventra.rianfernando.com/guide) — how every panel, term and prediction works.
+- [Data & Sources](https://naventra.rianfernando.com/data) — every feed behind the console, all free and public.
+- [About](https://naventra.rianfernando.com/about) — what Naventra is and how it is built.
+
+## Tech stack
+
+- Frontend: a Vite + React single-page app with a three.js real-time 3D radar.
+- Engine: a deterministic expert system plus an online learning layer — no black-box LLM in the control loop.
+- Always-on model: a Cloudflare Worker + D1 database that tracks and grades real operations every minute.
+- The touchdown-ETA model is validated live at +14.5 points over the raw engine on identical flights.
+- Cost: $0 — every data source is free and needs no API key.
+
+## Links
+
+- Live: https://naventra.rianfernando.com
+- Source: https://github.com/Rian-Fernando/Naventra
+- Built by Rian Fernando — https://rianfernando.com

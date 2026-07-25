@@ -41,6 +41,63 @@
       "author": { "@type": "Person", "name": "Rian Fernando", "url": "https://rianfernando.com" }
     }
     </script>
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is Naventra?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Naventra is an AI-native air traffic control console that works real, live ADS-B traffic around the world's busiest airports. An autonomous engine sequences arrivals, allocates runways from live weather, monitors separation and generates radio phraseology — then locks each prediction and grades itself against what actually happens."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is Naventra a real air traffic control system?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Naventra is an independent portfolio project and demonstration. It is not affiliated with any aviation authority and must not be used for operational or navigational purposes. It works with real live data but is a showcase of an AI decision engine, not certified air traffic control."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does Naventra grade its own accuracy?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "When an aircraft commits to final, the engine locks its prediction — which runway, the touchdown time and the landing order. At touchdown it measures that prediction against the actual outcome observed from ADS-B, and publishes the running accuracy 24/7. Only real live traffic counts toward the score."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is Naventra free to use?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Naventra is completely free, with no sign-up, no login and no API keys. Every data source — ADS-B traffic, weather and airport data — is free, keyless and public."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What data does Naventra use?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Live ADS-B transponder feeds (airplanes.live, adsb.lol and adsb.fi), NOAA/NWS METAR and TAF weather, callsign routes from adsbdb.com, and airport and runway geometry from OurAirports. Every source is free and requires no API key."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Who built Naventra?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Naventra was designed and built by Rian Fernando as a portfolio project. The full source is on GitHub, and the complete labeled training dataset is downloadable so the accuracy score can be independently verified."
+          }
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root">

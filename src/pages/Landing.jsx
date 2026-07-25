@@ -4,6 +4,7 @@ import LandingScene3D from '../components/LandingScene3D.jsx';
 import LandingMiniRadar from '../components/LandingMiniRadar.jsx';
 import { fetchGlobalScorecard } from '../lib/globalModel.js';
 import { AIRPORT_LIST } from '../data/airports.js';
+import { applyMeta } from '../lib/seo.js';
 import '../styles/landing.css';
 
 const AIRPORT_COUNT = AIRPORT_LIST.length;
@@ -54,15 +55,29 @@ const HONEST = [
   ['Auditable, not marketing', 'The full labeled training dataset is downloadable, so the scorecard can be independently checked.'],
 ];
 
+// Plain, quotable answers to the questions people (and AI answer engines) actually
+// ask. Mirrors the FAQPage JSON-LD in index.html — keep the two in sync.
+const FAQ = [
+  ['What is Naventra?', 'Naventra is an AI-native air traffic control console that works real, live ADS-B traffic around the world’s busiest airports. An autonomous engine sequences arrivals, allocates runways from live weather, monitors separation and generates radio phraseology — then locks each prediction and grades itself against what actually happens.'],
+  ['Is Naventra a real air traffic control system?', 'No. Naventra is an independent portfolio project and demonstration. It is not affiliated with any aviation authority and must not be used for operational or navigational purposes. It works with real live data but is a showcase of an AI decision engine, not certified air traffic control.'],
+  ['How does Naventra grade its own accuracy?', 'When an aircraft commits to final, the engine locks its prediction — which runway, the touchdown time and the landing order. At touchdown it measures that prediction against the actual outcome observed from ADS-B, and publishes the running accuracy 24/7. Only real live traffic counts toward the score.'],
+  ['Is Naventra free to use?', 'Yes. Naventra is completely free, with no sign-up, no login and no API keys. Every data source — ADS-B traffic, weather and airport data — is free, keyless and public.'],
+  ['What data does Naventra use?', 'Live ADS-B transponder feeds (airplanes.live, adsb.lol and adsb.fi), NOAA/NWS METAR and TAF weather, callsign routes from adsbdb.com, and airport and runway geometry from OurAirports. Every source is free and requires no API key.'],
+  ['Who built Naventra?', 'Naventra was designed and built by Rian Fernando as a portfolio project. The full source is on GitHub, and the complete labeled training dataset is downloadable so the accuracy score can be independently verified.'],
+];
+
 export default function Landing() {
   const [stats, setStats] = useState(null);
   const [seen, setSeen] = useState(false);
   const statRef = useRef(null);
 
   useEffect(() => {
-    document.title = 'Naventra — AI Air Traffic Command';
-    const link = document.querySelector('link[rel="canonical"]');
-    if (link) link.href = 'https://naventra.rianfernando.com/';
+    applyMeta({
+      path: '/',
+      title: 'Naventra — AI Air Traffic Command',
+      description:
+        'Naventra is an AI-native air traffic control console that works live ADS-B traffic in real time — sequencing arrivals, allocating runways from live weather, monitoring separation, and grading its own predictions against real-world landings. Free, keyless, and built by Rian Fernando.',
+    });
     document.body.classList.add('landing-mode');
     let alive = true;
     const load = () => fetchGlobalScorecard().then((s) => alive && s && setStats(s)).catch(() => {});
@@ -229,6 +244,20 @@ export default function Landing() {
                 <p>{d}</p>
               </div>
             </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ---------------------------------------------------------- faq --- */}
+      <section className="lp-faq reveal" id="faq">
+        <div className="lp-kicker">FREQUENTLY ASKED</div>
+        <h2>Questions, answered plainly.</h2>
+        <div className="lp-faq-list">
+          {FAQ.map(([q, a]) => (
+            <details className="lp-faq-item glass" key={q}>
+              <summary><h3>{q}</h3><span className="lp-faq-mark" aria-hidden="true">+</span></summary>
+              <p>{a}</p>
+            </details>
           ))}
         </div>
       </section>

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
+import { applyMeta } from '../lib/seo.js';
 import '../styles/landing.css';
 
 // Standalone document pages linked from the footer — Privacy, Data & Sources,
@@ -75,23 +76,33 @@ function About() {
 }
 
 const PAGES = {
-  '/privacy': { title: 'Privacy — Naventra', body: Privacy },
-  '/data': { title: 'Data & Sources — Naventra', body: DataSources },
-  '/about': { title: 'About — Naventra', body: About },
+  '/privacy': {
+    title: 'Privacy — Naventra',
+    description: 'Naventra privacy: no accounts, no personal data, and no tracking cookies. Layout preferences stay in your browser; the learning model stores only public flight data, never anything about visitors.',
+    body: Privacy,
+  },
+  '/data': {
+    title: 'Data & Sources — Naventra',
+    description: 'Every data source behind Naventra: live ADS-B (airplanes.live, adsb.lol, adsb.fi), NOAA/NWS METAR & TAF weather, adsbdb.com routes, and OurAirports airport data — all free, keyless and public, with attribution.',
+    body: DataSources,
+  },
+  '/about': {
+    title: 'About — Naventra',
+    description: 'About Naventra — an AI-native air traffic control console that ingests live ADS-B and weather, runs an autonomous controller engine, and grades its own predictions against real landings 24/7. Built by Rian Fernando.',
+    body: About,
+  },
 };
 
 export default function InfoPage({ route }) {
   const key = Object.keys(PAGES).find((p) => route.startsWith(p)) || '/about';
-  const { title, body: Body } = PAGES[key];
+  const { title, description, body: Body } = PAGES[key];
 
   useEffect(() => {
-    document.title = title;
+    applyMeta({ path: key, title, description });
     document.body.classList.add('landing-mode');
-    const link = document.querySelector('link[rel="canonical"]');
-    if (link) link.href = `https://naventra.rianfernando.com${key}`;
     window.scrollTo(0, 0);
     return () => document.body.classList.remove('landing-mode');
-  }, [title, key]);
+  }, [title, description, key]);
 
   return (
     <div className="info-page">
