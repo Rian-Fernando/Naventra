@@ -194,6 +194,7 @@ surface-surveillance system. It is labelled as such and never presented as autho
 - ✅ **Airport Acceptance Rate (AAR)** — capacity from config + wake mix + weather, with
   load and an estimated delay.
 - ✅ **Touchdown-ETA model — live** (worker-authoritative), feedback-safe; go-around ETAs voided.
+  **Live-validated +14.5 pts / −27% error** vs the raw engine on identical flights *(scripts/eval_eta.py)*.
 - ✅ **Departure flow** — wake-on-departure time spacing + Airport Departure Rate (ADR).
   (SIDs and EDCT slots left out — not in free data.)
 - ✅ **Surface safety** — runway-incursion advisory (partial ADS-B ground coverage).
@@ -209,6 +210,16 @@ genuinely helps: on held-out recent data it lifts "within ±2.5 min" from **75.8
 (+14 pts)** and cuts mean error roughly in half, at *every* airport. The dominant signal
 is a stable per-airport bias (flights hold year-round — not a seasonal artifact); features
 add a light adjustment. *(scripts/train_model.py; report in docs/model-report.md)*
+
+**Live-validated, not just offline.** Because the worker records the raw error alongside
+the served (corrected) prediction, we can grade both systems on the *identical* live
+flights. Over the first ~24 h in production the model held **+14.5 pts** (raw 57.1% →
+**71.7%** within ±2.5 min) and cut mean error **227s → 166s (−27%)** — matching the offline
+projection almost exactly. It is **positive at every airport and in every 6-hour window**
+(Heathrow +21, JFK +25 where raw was worst; LAX only +2, since LAX barely holds so there's
+little bias to exploit — the model doesn't *hurt* it), fixing 408 raw misses against 159
+broken (net +249), with the applied correction a sane median +113s and essentially never
+clamped. *(reproduce anytime with `scripts/eval_eta.py`)*
 
 **How it's served safely — a real ML-systems trap avoided.** If we applied the correction
 to the *graded* prediction and then retrained on the newly-corrected data, the model would
