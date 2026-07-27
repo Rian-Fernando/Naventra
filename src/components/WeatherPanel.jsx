@@ -26,6 +26,7 @@ export default function WeatherPanel({ weather, airport }) {
         <span className="panel-title">METAR / ATIS</span>
         <span className={`badge ${catColor}`}>{weather.fltCat}</span>
       </div>
+      <div className="panel-body">
       <div className="wx-grid">
         <div className="wx-cell">
           <div className="v">{weather.windDir != null ? `${String(weather.windDir).padStart(3, '0')}°` : 'VRB'} / {fmtSpeed(weather.windKt, settings.speed, false)}{weather.gustKt ? `G${fmtSpeed(weather.gustKt, settings.speed, false)}` : ''}</div>
@@ -55,6 +56,7 @@ export default function WeatherPanel({ weather, airport }) {
       <div className="wx-raw">{weather.raw}</div>
       <div className="wx-atis">
         Information <b>{atisLetter()}</b> current · source {weather.source} · Tower {airport.freqs.tower} · ATIS {airport.freqs.atis}
+      </div>
       </div>
     </div>
   );

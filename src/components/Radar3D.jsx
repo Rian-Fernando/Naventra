@@ -6,6 +6,7 @@ import { toLocalNm, deadReckon } from '../lib/geo.js';
 import { iconKind } from '../lib/aircraftIcon.js';
 import { emergencyInfo } from '../lib/filters.js';
 import { fmtAltScope, fmtSpeed } from '../lib/units.js';
+import { classifyWeather } from '../lib/weatherFx.js';
 
 // Merge mixed primitives: ExtrudeGeometry is non-indexed while Box/Cylinder/
 // Sphere are indexed, so normalise everything to non-indexed first.
@@ -140,10 +141,10 @@ function makeMaterials() {
   return mats;
 }
 
-export default function Radar3D({ airport, aircraft, conflicts, runways, selectedId, onSelect, range, labels, showTrails, units, onUnavailable }) {
+export default function Radar3D({ airport, aircraft, conflicts, runways, selectedId, onSelect, range, labels, showTrails, units, onUnavailable, weather, wxEnabled = true }) {
   const wrapRef = useRef(null);
   const dataRef = useRef({});
-  dataRef.current = { airport, aircraft, conflicts, runways, selectedId, range, labels, showTrails, units };
+  dataRef.current = { airport, aircraft, conflicts, runways, selectedId, range, labels, showTrails, units, weather, wxEnabled };
 
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -337,6 +338,184 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
     conflLines.frustumCulled = false;
     scene.add(conflLines);
 
+    // ---- live weather, rendered in the 3D scene (on the grid) --------------
+    // Precipitation is real world-space geometry falling onto the scope, so it
+    // has depth and perspective and orbits with the camera — not a flat overlay
+    // stretched across the panel. Driven by the live METAR each frame.
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const WX_TOP = RADIUS * 0.9;          // particle ceiling above the grid
+    const R2 = RADIUS * RADIUS;
+    const spawnInDisc = (p, top) => {
+      const r = Math.sqrt(Math.random()) * RADIUS, a = Math.random() * 6.2832;
+      p.x = Math.cos(a) * r; p.z = Math.sin(a) * r; p.y = top;
+    };
+    const windTo = (f) => {
+      // METAR wind is where it blows FROM; particles drift toward dir+180.
+      const b = (((f.windDir ?? 0) + 180) * Math.PI) / 180;
+      return { x: Math.sin(b), z: -Math.cos(b), spd: Math.min(1, (f.windKt || 0) / 45) };
+    };
+
+    // Rain / drizzle / wind — line streaks (two verts each), one shared buffer.
+    const N_RAIN = 850;
+    const rainGeo = new THREE.BufferGeometry();
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N_RAIN * 6), 3));
+    const rainMat = new THREE.LineBasicMaterial({ color: 0x9fc4dc, transparent: true, opacity: 0.26, depthWrite: false });
+    const rain = new THREE.LineSegments(rainGeo, rainMat);
+    rain.frustumCulled = false; rain.visible = false;
+    scene.add(rain);
+    const rainP = Array.from({ length: N_RAIN }, () => {
+      const p = { s: 0.8 + Math.random() * 0.5 }; spawnInDisc(p, Math.random() * WX_TOP); return p;
+    });
+
+    // Snow — soft round sprites that sway as they fall.
+    const flake = (() => {
+      const c = document.createElement('canvas'); c.width = c.height = 32;
+      const g = c.getContext('2d');
+      const rg = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+      rg.addColorStop(0, 'rgba(255,255,255,1)');
+      rg.addColorStop(0.45, 'rgba(255,255,255,0.7)');
+      rg.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = rg; g.beginPath(); g.arc(16, 16, 16, 0, 6.2832); g.fill();
+      return new THREE.CanvasTexture(c);
+    })();
+    const N_SNOW = 650;
+    const snowGeo = new THREE.BufferGeometry();
+    snowGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N_SNOW * 3), 3));
+    const snowMat = new THREE.PointsMaterial({ color: 0xeef4fb, size: 1.7, map: flake, sizeAttenuation: true, transparent: true, opacity: 0.85, depthWrite: false });
+    const snow = new THREE.Points(snowGeo, snowMat);
+    snow.frustumCulled = false; snow.visible = false;
+    scene.add(snow);
+    const snowP = Array.from({ length: N_SNOW }, () => {
+      const p = { s: 7 + Math.random() * 8, ph: Math.random() * 6.28, pv: 0.6 + Math.random() * 0.9 };
+      spawnInDisc(p, Math.random() * WX_TOP); return p;
+    });
+
+    // Fog / mist — pull the scene murk in and lay a low haze over the grid.
+    const fogHaze = new THREE.Mesh(
+      new THREE.CircleGeometry(RADIUS, 64),
+      new THREE.MeshBasicMaterial({ color: 0x9fb4c0, transparent: true, opacity: 0, depthWrite: false })
+    );
+    fogHaze.rotation.x = -Math.PI / 2; fogHaze.position.y = 5;
+    scene.add(fogHaze);
+    const fogBase = { near: scene.fog.near, far: scene.fog.far };
+
+    // Lightning — occasional jagged strikes to the grid. A single bolt appears,
+    // holds briefly, then fades: an actual strike, not a full-screen strobe.
+    const BOLT_DUR = 0.34;
+    const boltGeo = new THREE.BufferGeometry();
+    boltGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(96 * 3), 3)); // ≤48 segments
+    const boltMat = new THREE.LineBasicMaterial({ color: 0xcfe3ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+    const bolt = new THREE.LineSegments(boltGeo, boltMat);
+    bolt.frustumCulled = false; bolt.visible = false;
+    scene.add(bolt);
+    const boltGlow = new THREE.Mesh(
+      new THREE.CircleGeometry(18, 24),
+      new THREE.MeshBasicMaterial({ color: 0x9fc4ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })
+    );
+    boltGlow.rotation.x = -Math.PI / 2; boltGlow.position.y = 0.3; boltGlow.visible = false;
+    scene.add(boltGlow);
+    let boltLife = 0, boltTimer = 2 + Math.random() * 4;
+
+    function strike() {
+      const rr = Math.sqrt(Math.random()) * RADIUS * 0.8, aa = Math.random() * 6.2832;
+      const gx = Math.cos(aa) * rr, gz = Math.sin(aa) * rr;   // ground strike point on the grid
+      const steps = 11 + Math.floor(Math.random() * 4);
+      const tx = gx + (Math.random() * 2 - 1) * 20, tz = gz + (Math.random() * 2 - 1) * 20; // cloud origin
+      const pts = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;                 // 0 = cloud top → 1 = ground
+        const jit = (1 - t) * 9;             // wander tightens toward the strike point
+        pts.push(new THREE.Vector3(
+          tx * (1 - t) + gx * t + (Math.random() * 2 - 1) * jit,
+          WX_TOP * (1 - t),
+          tz * (1 - t) + gz * t + (Math.random() * 2 - 1) * jit
+        ));
+      }
+      const seg = [];
+      for (let i = 0; i < pts.length - 1; i++) seg.push(pts[i], pts[i + 1]);
+      for (let b = 0, forks = 1 + (Math.random() < 0.6 ? 1 : 0); b < forks; b++) {
+        const k = 2 + Math.floor(Math.random() * (pts.length - 4));
+        let p = pts[k].clone();
+        for (let j = 0, bl = 2 + Math.floor(Math.random() * 3); j < bl; j++) {
+          const np = p.clone().add(new THREE.Vector3((Math.random() * 2 - 1) * 16, -4 - Math.random() * 9, (Math.random() * 2 - 1) * 16));
+          seg.push(p.clone(), np); p = np;
+        }
+      }
+      const attr = boltGeo.getAttribute('position');
+      const n = Math.min(seg.length, attr.count);
+      for (let i = 0; i < n; i++) attr.setXYZ(i, seg[i].x, Math.max(0, seg[i].y), seg[i].z);
+      attr.needsUpdate = true;
+      boltGeo.setDrawRange(0, n);
+      boltGlow.position.set(gx, 0.3, gz);
+      boltLife = BOLT_DUR;
+    }
+
+    function updateWeather(f, dt) {
+      const rainOn = !reduce && (f.kind === 'rain' || f.kind === 'thunder' || f.kind === 'wind');
+      const snowOn = !reduce && f.kind === 'snow';
+      const fogOn = f.kind === 'fog';
+      rain.visible = rainOn; snow.visible = snowOn;
+
+      // Ease fog density in/out (not motion, so it applies under reduced-motion too).
+      const near = fogOn ? 22 : fogBase.near;
+      const far = fogOn ? 128 - f.intensity * 44 : fogBase.far;
+      scene.fog.near += (near - scene.fog.near) * 0.05;
+      scene.fog.far += (far - scene.fog.far) * 0.05;
+      fogHaze.material.opacity += ((fogOn ? 0.1 + f.intensity * 0.14 : 0) - fogHaze.material.opacity) * 0.05;
+
+      if (rainOn) {
+        const w = windTo(f);
+        const wind = f.kind === 'wind';
+        const fall = wind ? 6 : 150 + f.intensity * 150;
+        const horiz = wind ? 130 + f.intensity * 150 : 18 + w.spd * 95;
+        const len = wind ? 15 : 3.5 + f.intensity * 3;
+        const vx = w.x * horiz, vy = -fall, vz = w.z * horiz;
+        const vl = Math.hypot(vx, vy, vz) || 1;
+        const ux = (vx / vl) * len, uy = (vy / vl) * len, uz = (vz / vl) * len;
+        const active = wind ? 240 : N_RAIN;   // wind = sparse, long streaks
+        const attr = rainGeo.getAttribute('position');
+        for (let i = 0; i < N_RAIN; i++) {
+          const p = rainP[i];
+          if (i < active) {
+            p.x += vx * dt; p.z += vz * dt; p.y -= fall * p.s * dt;
+            if (p.y < 0 || p.x * p.x + p.z * p.z > R2) spawnInDisc(p, WX_TOP);
+            attr.setXYZ(i * 2, p.x, p.y, p.z);
+            attr.setXYZ(i * 2 + 1, p.x - ux, p.y - uy, p.z - uz);
+          } else { attr.setXYZ(i * 2, 0, -9, 0); attr.setXYZ(i * 2 + 1, 0, -9, 0); }
+        }
+        attr.needsUpdate = true;
+        rainMat.opacity = wind ? 0.16 : 0.22 + f.intensity * 0.2;
+      }
+
+      if (snowOn) {
+        const w = windTo(f);
+        const attr = snowGeo.getAttribute('position');
+        for (let i = 0; i < N_SNOW; i++) {
+          const p = snowP[i];
+          p.ph += p.pv * dt; p.y -= p.s * dt;
+          p.x += (Math.sin(p.ph) * 3 + w.x * w.spd * 34) * dt;
+          p.z += (Math.cos(p.ph * 0.8) * 3 + w.z * w.spd * 34) * dt;
+          if (p.y < 0 || p.x * p.x + p.z * p.z > R2) spawnInDisc(p, WX_TOP);
+          attr.setXYZ(i, p.x, p.y, p.z);
+        }
+        attr.needsUpdate = true;
+        snowMat.opacity = 0.6 + f.intensity * 0.25;
+      }
+
+      // Lightning strikes for thunderstorms — occasional bolts, never a strobe.
+      if (f.kind === 'thunder' && !reduce) {
+        boltTimer -= dt;
+        if (boltTimer <= 0) { strike(); boltTimer = 3 + Math.random() * 6; }
+      }
+      if (boltLife > 0) {
+        boltLife -= dt;
+        const e = Math.max(0, boltLife / BOLT_DUR);
+        const op = e > 0.75 ? 1 : e / 0.75;   // brief hold, then a smooth fade
+        bolt.visible = true; boltMat.opacity = op;
+        boltGlow.visible = true; boltGlow.material.opacity = op * 0.5;
+      } else if (bolt.visible) { bolt.visible = false; boltGlow.visible = false; }
+    }
+
     const raycaster = new THREE.Raycaster();
     raycaster.params.Points = { threshold: 2 };
 
@@ -374,10 +553,14 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
     let raf;
     let lastTrailSample = 0;
     let lastIcao = null;
+    let wxLast = performance.now();
 
     const animate = () => {
       const { airport: ap, aircraft: acs, conflicts: confl, runways: rwys, selectedId: selId, range: rangeNm, labels: labelMode, showTrails: trailsOn, units: u } = dataRef.current;
       const now = Date.now();
+      const tnow = performance.now();
+      const dt = Math.min((tnow - wxLast) / 1000, 0.05);
+      wxLast = tnow;
       const k = RADIUS / rangeNm;
       const { width, height } = wrap.getBoundingClientRect();
 
@@ -391,6 +574,10 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
       if (sig !== rwySignature) { rwySignature = sig; rebuildRunways(rwys, k, ap, rangeNm); }
 
       sweepGroup.rotation.y = -((now % SWEEP_PERIOD_MS) / SWEEP_PERIOD_MS) * Math.PI * 2;
+
+      updateWeather(dataRef.current.wxEnabled === false
+        ? { kind: 'clear', intensity: 0, windDir: 0, windKt: 0 }
+        : classifyWeather(dataRef.current.weather), dt);
 
       const conflictIds = new Set(confl.flatMap((c) => [c.a.id, c.b.id]));
       const liveIds = new Set();
@@ -559,6 +746,11 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
       ro.disconnect();
       renderer.domElement.removeEventListener('click', onClick);
       controls.dispose();
+      rainGeo.dispose(); rainMat.dispose();
+      snowGeo.dispose(); snowMat.dispose(); flake.dispose();
+      fogHaze.geometry.dispose(); fogHaze.material.dispose();
+      boltGeo.dispose(); boltMat.dispose();
+      boltGlow.geometry.dispose(); boltGlow.material.dispose();
       renderer.dispose();
       wrap.removeChild(renderer.domElement);
       wrap.removeChild(overlay);

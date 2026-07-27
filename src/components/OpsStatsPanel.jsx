@@ -14,6 +14,7 @@ export default function OpsStatsPanel({ opsStats, kpis, capacity }) {
         <span className="panel-title">Tower Ops</span>
         <span className="badge">{o.movHr ?? 0}/HR</span>
       </div>
+      <div className="panel-body">
       {c && (
         <div className="cap">
           <div className="cap-head">
@@ -61,6 +62,7 @@ export default function OpsStatsPanel({ opsStats, kpis, capacity }) {
           <div className="v">{kpis?.ground ?? 0}</div>
           <div className="k">On ground</div>
         </div>
+      </div>
       </div>
     </div>
   );

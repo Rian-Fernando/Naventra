@@ -29,6 +29,7 @@ export default function RadarPanel(props) {
   const [range, setRange] = useState(40);
   const [labels, setLabels] = useState('AUTO');
   const [showTrails, setShowTrails] = useState(true);
+  const [showWx, setShowWx] = useState(true);
 
   const filters = view?.prefs.filters;
   const airline = view?.prefs.airline || null;
@@ -53,10 +54,19 @@ export default function RadarPanel(props) {
       </div>
       <div className="radar-body">
         {scope === '3D'
-          ? <Radar3D {...viewProps} onUnavailable={() => setScope('2D')} />
+          ? <Radar3D {...viewProps} wxEnabled={showWx} onUnavailable={() => setScope('2D')} />
           : <RadarScope {...viewProps} />}
-        <WeatherFX weather={weather} />
-        {wxfx.kind !== 'clear' && <div className={`wx-chip wx-${wxfx.kind}`}>{wxfx.label}</div>}
+        {/* 3D renders weather in-scene (on the grid); the flat overlay is only for the 2D scope. */}
+        {scope === '2D' && showWx && <WeatherFX weather={weather} />}
+        {wxfx.kind !== 'clear' && (
+          <button
+            className={`wx-chip wx-${wxfx.kind} ${showWx ? '' : 'off'}`}
+            onClick={() => setShowWx(!showWx)}
+            title={showWx ? 'Weather effects on — click to hide' : 'Weather effects off — click to show'}
+          >
+            {wxfx.label}
+          </button>
+        )}
         {(emergencies.length > 0 || incursions.length > 0) && (
           <div className="radar-alert" role="alert">
             {emergencies.slice(0, 2).map(({ ac, info }) => (
@@ -84,7 +94,7 @@ export default function RadarPanel(props) {
             ))}
           </div>
           <div className="rc-group">
-            <button className={showTrails ? 'on' : ''} onClick={() => setShowTrails(!showTrails)}>TRL</button>
+            <button className={showTrails ? 'on' : ''} onClick={() => setShowTrails(!showTrails)} title="Aircraft trails">TRL</button>
             {['AUTO', 'ALL', 'OFF'].map((m) => (
               <button key={m} className={labels === m ? 'on' : ''} onClick={() => setLabels(m)}>{m}</button>
             ))}
