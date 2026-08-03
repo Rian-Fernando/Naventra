@@ -4,6 +4,17 @@ All notable changes to Naventra are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Feedback widget (Feedex).** The feedback launcher is injected at build time by a
+  Vite plugin (`vite/feedex.js`) — only when a `pk_fdx_…` key is configured, so local
+  dev never posts to the real inbox. Reads `VITE_FEEDEX_KEY` or `NEXT_PUBLIC_FEEDEX_KEY`
+  (Node/build-time, sidestepping Vite's `VITE_`-only client exposure). Appearance pinned
+  on the tag to match the brand (cyan `#4cc9f0`, dark, bottom-right — clear of the landing
+  hero's bottom-left scroll hint). Reports carry only non-sensitive context (route +
+  version/build); no accounts, so no email is attached. Tests: `npm run test:feedex`.
+
 ## [1.0.0] — 2026-07-22
 
 First tagged release. Naventra is a live, AI-native air-traffic-control console

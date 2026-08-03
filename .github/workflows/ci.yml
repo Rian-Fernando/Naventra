@@ -22,3 +22,5 @@ jobs:
         run: for f in worker/src/*.js; do node --check "$f"; done
       - name: Engine regression suite
         run: node scripts/ci-regression.mjs
+      - name: Feedex widget injection tests
+        run: node scripts/test-feedex.mjs

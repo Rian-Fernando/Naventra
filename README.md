@@ -127,6 +127,17 @@ The Vite dev server proxies the non-CORS APIs (see `vite.config.js`). Deploy con
 **Vercel** (`vercel.json`) and **Netlify** (`netlify.toml`) is preconfigured — `npm run build`
 and deploy as-is. Regenerate airport data with `node scripts/gen-airports.mjs`.
 
+### Feedback widget (Feedex)
+
+The [Feedex](https://feedex.rianfernando.com) feedback launcher is injected at build time
+by a Vite plugin (`vite/feedex.js`) — **only when a publishable key is set**, so local dev
+never posts into the real inbox. Set `VITE_FEEDEX_KEY` (or `NEXT_PUBLIC_FEEDEX_KEY`, which
+Vercel uses — see the env-var note in `.env.example`) to a `pk_fdx_…` key. Appearance is
+pinned on the tag to match the brand (cyan accent, dark, bottom-right). A report carries
+only **non-sensitive context** — the current route and the app version/build — never live
+traffic, aircraft, user content or keys; Naventra has no accounts, so no email is attached.
+Tests: `npm run test:feedex`.
+
 ## Project structure
 
 ```

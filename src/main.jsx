@@ -8,6 +8,7 @@ import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/600.css';
 import './styles/global.css';
 import App from './App.jsx';
+import { initFeedex } from './lib/feedex.js';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -15,3 +16,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <Analytics />
   </React.StrictMode>
 );
+
+// Attach non-sensitive context (route + version) to Feedex reports if the widget
+// loaded. No-op when no key is configured or the script is blocked.
+initFeedex();
