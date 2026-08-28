@@ -41,6 +41,7 @@ export default function Tour({ view }) {
   }, [restore]);
 
   const start = useCallback(() => {
+    if (active) return; // a tour is already running — never restart it to step 1
     // Reveal any panels the tour covers that are currently hidden so every step
     // shows; they're restored when the tour ends.
     const hidden = STEPS.filter((s) => s.panel && view?.prefs.panels[s.panel] === false).map((s) => s.panel);
@@ -51,18 +52,23 @@ export default function Tour({ view }) {
       if (!visible.length) { restore(); return; }
       setSteps(visible); setI(0); setActive(true);
     }, hidden.length ? 130 : 0);
-  }, [view, restore]);
+  }, [view, restore, active]);
 
-  // auto-start on first visit or ?tour=1; manual replay via the nv-tour event
+  // Auto-start on first visit or ?tour=1; manual replay via the nv-tour event.
+  // Runs ONCE: `start` is read through a ref so a new `view` identity every render
+  // (useViewPrefs returns a fresh object each time) can't re-run this effect and
+  // re-arm its timer — which would fire start() mid-tour and snap back to step 1.
+  const startRef = useRef(start);
+  startRef.current = start;
   useEffect(() => {
     const force = new URLSearchParams(window.location.search).get('tour') === '1';
     let done = false; try { done = !!localStorage.getItem(KEY); } catch { /* ignore */ }
     let t;
-    if (force || !done) t = setTimeout(start, force ? 400 : 1500);
-    const h = () => start();
+    if (force || !done) t = setTimeout(() => startRef.current(), force ? 400 : 1500);
+    const h = () => startRef.current();
     window.addEventListener('nv-tour', h);
     return () => { clearTimeout(t); window.removeEventListener('nv-tour', h); };
-  }, [start]);
+  }, []);
 
   useLayoutEffect(() => {
     if (!active || !steps[i]) return undefined;
