@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS samples (
 );
 CREATE INDEX IF NOT EXISTS idx_samples_ts ON samples(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_samples_icao ON samples(icao);
+-- Composite: the tick's arr-rate query filters WHERE icao=? AND ts>? every minute.
+CREATE INDEX IF NOT EXISTS idx_samples_icao_ts ON samples(icao, ts);
 
 -- Graded landings (rolling history for display).
 CREATE TABLE IF NOT EXISTS landings (
@@ -46,6 +48,7 @@ CREATE TABLE IF NOT EXISTS landings (
   total      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_land_ts ON landings(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_land_icao_ts ON landings(icao, ts);
 
 -- Aggregate accuracy per airport + category (the all-time scorecard).
 CREATE TABLE IF NOT EXISTS stats (
@@ -63,6 +66,7 @@ CREATE TABLE IF NOT EXISTS model (
   eta_ema     REAL NOT NULL DEFAULT 0,
   eta_n       INTEGER NOT NULL DEFAULT 0,
   landings    INTEGER NOT NULL DEFAULT 0,
+  samples     INTEGER NOT NULL DEFAULT 0,   -- running training-row count (avoids COUNT(*) on samples)
   updated_ts  INTEGER NOT NULL DEFAULT 0
 );
 

@@ -3,21 +3,24 @@ import { CATEGORIES } from '../../src/engine/grading.js';
 
 export async function loadModel(db, icao) {
   const row = await db.prepare('SELECT * FROM model WHERE icao=?').bind(icao).first();
-  if (!row) return { icao, rwy: {}, eta: { ema: 0, n: 0 }, landings: 0 };
+  if (!row) return { icao, rwy: {}, eta: { ema: 0, n: 0 }, landings: 0, samples: 0 };
   return {
     icao,
     rwy: JSON.parse(row.rwy_json || '{}'),
     eta: { ema: row.eta_ema, n: row.eta_n },
     landings: row.landings,
+    // Running per-airport training-row counter, so the scorecard never has to
+    // COUNT(*) the (large, ever-growing) samples table. See migration 003.
+    samples: row.samples || 0,
   };
 }
 
 export function saveModelStmt(db, m) {
   return db.prepare(
-    `INSERT INTO model (icao, rwy_json, eta_ema, eta_n, landings, updated_ts)
-     VALUES (?1,?2,?3,?4,?5,?6)
-     ON CONFLICT(icao) DO UPDATE SET rwy_json=?2, eta_ema=?3, eta_n=?4, landings=?5, updated_ts=?6`
-  ).bind(m.icao, JSON.stringify(m.rwy), m.eta.ema, m.eta.n, m.landings, Date.now());
+    `INSERT INTO model (icao, rwy_json, eta_ema, eta_n, landings, samples, updated_ts)
+     VALUES (?1,?2,?3,?4,?5,?6,?7)
+     ON CONFLICT(icao) DO UPDATE SET rwy_json=?2, eta_ema=?3, eta_n=?4, landings=?5, samples=?6, updated_ts=?7`
+  ).bind(m.icao, JSON.stringify(m.rwy), m.eta.ema, m.eta.n, m.landings, m.samples || 0, Date.now());
 }
 
 // Learned model params for the frontend (so the live console uses global priors).
@@ -102,7 +105,9 @@ export function saveConfigStmt(db, icao, cfg) {
 }
 
 export async function datasetCount(db) {
-  const row = await db.prepare('SELECT COUNT(*) k FROM samples').first();
+  // samples.id is AUTOINCREMENT and rows are never deleted, so MAX(id) == total
+  // rows but reads a single index entry instead of scanning the whole table.
+  const row = await db.prepare('SELECT MAX(id) k FROM samples').first();
   return row?.k || 0;
 }
 
@@ -165,17 +170,30 @@ export async function getScorecard(db, icao) {
     ? await db.prepare('SELECT COUNT(*) k FROM predictions WHERE icao=?').bind(icao).first()
     : await db.prepare('SELECT COUNT(*) k FROM predictions').first();
 
-  const modelRow = icao
-    ? await db.prepare('SELECT SUM(landings) l FROM model WHERE icao=?').bind(icao).first()
-    : await db.prepare('SELECT SUM(landings) l FROM model').first();
+  // Pull landings + the training-row count from the tiny model table (one row per
+  // hub) so the scorecard never scans the large samples table on the hot path.
+  // Defensive: if migration 003 (the model.samples column) hasn't been applied
+  // yet, fall back to a cheap MAX(id) so the scorecard still serves rather than
+  // 500-ing the homepage.
+  let learned = 0, sampleTotal = 0;
+  try {
+    const m = icao
+      ? await db.prepare('SELECT SUM(landings) l, SUM(samples) s FROM model WHERE icao=?').bind(icao).first()
+      : await db.prepare('SELECT SUM(landings) l, SUM(samples) s FROM model').first();
+    learned = m?.l || 0; sampleTotal = m?.s || 0;
+  } catch {
+    const m = icao
+      ? await db.prepare('SELECT SUM(landings) l FROM model WHERE icao=?').bind(icao).first()
+      : await db.prepare('SELECT SUM(landings) l FROM model').first();
+    learned = m?.l || 0;
+    const sc = await db.prepare('SELECT MAX(id) k FROM samples').first();
+    sampleTotal = sc?.k || 0;
+  }
 
   const recentRows = icao
     ? (await db.prepare('SELECT * FROM landings WHERE icao=? ORDER BY ts DESC LIMIT 20').bind(icao).all()).results
     : (await db.prepare('SELECT * FROM landings ORDER BY ts DESC LIMIT 20').all()).results;
 
-  const sampleRow = icao
-    ? await db.prepare('SELECT COUNT(*) k FROM samples WHERE icao=?').bind(icao).first()
-    : await db.prepare('SELECT COUNT(*) k FROM samples').first();
 
   // Trailing-24h accuracy — shows current model quality without the drag of
   // months of historical grades in the all-time number.
@@ -187,8 +205,8 @@ export async function getScorecard(db, icao) {
   return {
     allTime: { n: totalN, pct: totalN ? Math.round((totalC / totalN) * 100) : null, byCat },
     openCount: openRow?.k || 0,
-    learned: modelRow?.l || 0,
-    samples: sampleRow?.k || 0,
+    learned,
+    samples: sampleTotal,
     recent24: r24 && r24.t ? { n: r24.t, pct: Math.round((r24.c / r24.t) * 100) } : null,
     recent: recentRows.map((r) => ({
       ts: r.ts, callsign: r.callsign, airport: r.iata, live: true, items: JSON.parse(r.items_json),

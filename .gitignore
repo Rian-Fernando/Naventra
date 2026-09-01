@@ -5,6 +5,10 @@ dist/
 
 worker/node_modules/
 worker/.wrangler/
+# D1 database exports / backups — keep locally, never commit (large data dumps)
+worker/backup.sql
+worker/*.dump.sql
+worker/*-backup.sql
 .dev.vars
 .env
 .vercel

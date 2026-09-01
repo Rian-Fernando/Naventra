@@ -105,7 +105,12 @@ export async function tickAirport(env, icao) {
   let observed = obsNow;
   let cfgToSave = null;
   if (obsNow.size) {
-    cfgToSave = { ends: [...obsNow.keys()], ts: now };
+    const ends = [...obsNow.keys()];
+    const prev = cfgState?.ends || [];
+    const changed = ends.length !== prev.length || ends.some((e) => !prev.includes(e));
+    // Only persist the sticky config on a real change, or at most every ~10 min to
+    // refresh its timestamp — not every active tick (that was ~1 write/min/hub).
+    if (changed || !cfgState || now - cfgState.ts > 10 * 60000) cfgToSave = { ends, ts: now };
   } else if (cfgState && now - cfgState.ts < 25 * 60000) {
     observed = new Map(cfgState.ends.map((e) => [e, 1]));
   }
@@ -227,6 +232,8 @@ export async function tickAirport(env, icao) {
       continue;
     }
 
+    const prevSeen = o.lastSeen;
+    const prevSample = o.sample;
     o.lastSeen = now;
     if (!ac.onGround && ac.agl != null && ac.agl < 4000 && ac.gs > 60) {
       o.sample = { lat: ac.lat, lon: ac.lon, track: ac.track, agl: ac.agl, distNm: ac.distNm, seq: ac.seqRwy ?? o.sample?.seq ?? null };
@@ -237,7 +244,14 @@ export async function tickAirport(env, icao) {
     } else if (o.sample && ac.vs > 700 && ac.distNm > o.sample.distNm + 0.4 && ac.agl > o.sample.agl + 250) {
       openDeletes.add(ac.id); // go-around → void
     } else {
-      openUpserts.set(ac.id, o); // refresh last_seen/sample
+      // Throttle refresh writes: always persist near the runway (where the drop-out
+      // landing heuristic needs a fresh last_seen) or when the tracked sample moved;
+      // otherwise persist at most every ~2.5 min for far/high approaches. Cuts most
+      // of the per-minute open-prediction write volume without hurting accuracy.
+      const lowClose = o.sample && o.sample.agl < 2500 && o.sample.distNm < 6;
+      if (lowClose || o.sample !== prevSample || now - prevSeen >= 150000) {
+        openUpserts.set(ac.id, o); // refresh last_seen/sample
+      }
     }
   }
 
@@ -261,6 +275,11 @@ export async function tickAirport(env, icao) {
     graded++;
   }
 
+  // Keep the model's running training-row counter in step with the samples we're
+  // about to insert, so the scorecard can read the count from the model table
+  // instead of scanning samples (see store.js / migration 003).
+  if (samples.length) model.samples = (model.samples || 0) + samples.length;
+
   // Build the batch with no duplicate primary keys.
   const stmts = [];
   for (const entry of landingEntries) stmts.push(recordLandingStmt(env.DB, entry));
@@ -270,7 +289,9 @@ export async function tickAirport(env, icao) {
   for (const id of depDeletes) { depUpserts.delete(id); stmts.push(deleteOpenStmt(env.DB, id)); }
   for (const rec of openUpserts.values()) stmts.push(upsertOpenStmt(env.DB, icao, rec));
   for (const rec of depUpserts.values()) stmts.push(upsertOpenStmt(env.DB, icao, rec));
-  stmts.push(saveModelStmt(env.DB, model));
+  // The model only changes when a landing was graded this tick, so don't rewrite
+  // it every idle minute (that was ~1 write/min/hub of pure churn).
+  if (graded > 0) stmts.push(saveModelStmt(env.DB, model));
   if (cfgToSave) stmts.push(saveConfigStmt(env.DB, icao, cfgToSave));
 
   if (stmts.length) await env.DB.batch(stmts);
