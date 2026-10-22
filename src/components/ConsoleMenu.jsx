@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Menu, X, BookOpen, ExternalLink, Github, LayoutGrid, Check, Maximize2, Sliders, Compass } from 'lucide-react';
+import { Menu, X, BookOpen, ExternalLink, LayoutGrid, Check, Maximize2, Sliders, Compass } from 'lucide-react';
+import GithubIcon from './GithubIcon.jsx';
 import { PANELS, PRESETS } from '../hooks/useViewPrefs.js';
 
 // Hamburger menu: navigation links + display settings + guided tour + layout
@@ -37,7 +38,7 @@ export default function ConsoleMenu({ prefs, togglePanel, applyPreset, reset, op
             <button className="cmenu-link" onClick={() => { startTour?.(); setOpen(false); }}><Compass size={13} /> Guided tour</button>
             <a className="cmenu-link" href="/guide"><BookOpen size={13} /> Operator&rsquo;s Guide</a>
             <a className="cmenu-link" href="https://rianfernando.com" target="_blank" rel="noopener"><ExternalLink size={13} /> rianfernando.com</a>
-            <a className="cmenu-link" href="https://github.com/Rian-Fernando/Naventra" target="_blank" rel="noopener"><Github size={13} /> Source on GitHub</a>
+            <a className="cmenu-link" href="https://github.com/Rian-Fernando/Naventra" target="_blank" rel="noopener"><GithubIcon size={13} /> Source on GitHub</a>
             <button className="cmenu-link" onClick={enterFullscreen}><Maximize2 size={13} /> Toggle fullscreen</button>
           </div>
 

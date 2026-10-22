@@ -7,7 +7,7 @@ import '../styles/landing.css';
 // About. Plain, official-looking, and all true. No 3D, no tracking scripts.
 
 const SOURCES = [
-  ['Live aircraft (ADS-B)', 'airplanes.live · adsb.lol · adsb.fi', 'Community ADS-B receiver networks. Free, keyless, and cross-checked against each other. Every target on the radar is a real aircraft broadcasting its own position.'],
+  ['Live aircraft (ADS-B)', 'adsb.lol · adsb.fi', 'Community ADS-B receiver networks, free and keyless, with automatic failover between them. Every target on the radar is a real aircraft broadcasting its own position.'],
   ['Weather (METAR & TAF)', 'NOAA / NWS Aviation Weather Center', 'The official U.S. government aviation weather service. Drives runway allocation and the forecast outlook.'],
   ['Flight routes', 'adsbdb.com', 'Free, keyless callsign → origin/destination lookups, reconciled against observed direction of flight.'],
   ['Airports & runways', 'OurAirports (public domain)', 'Runway thresholds, headings, lengths and frequencies. Exact geometry is generated from this dataset at build time — nothing is hand-entered.'],
@@ -19,15 +19,17 @@ function Privacy() {
       <h1>Privacy</h1>
       <p className="info-lede">Naventra is built to need as little of your data as possible — because it needs none of it.</p>
       <h2>No accounts, no personal data</h2>
-      <p>There is no sign-up, no login, and no form anywhere on this site. Naventra never asks for or stores any personal information about you.</p>
+      <p>There is no sign-up and no login. Naventra never requires any personal information to use it.</p>
       <h2>What is stored, and where</h2>
       <ul>
         <li><b>On your device only:</b> your layout preferences (which panels are open, column widths, radar view) live in your browser&rsquo;s <code>localStorage</code>. They never leave your machine and you can clear them any time.</li>
         <li><b>Anonymous analytics:</b> aggregate page views via Vercel Web Analytics, which does not use cookies to identify individuals.</li>
         <li><b>The learning model</b> stores operational flight data (public ADS-B positions, runways, timings) — never anything about the people viewing the site.</li>
       </ul>
+      <h2>Feedback</h2>
+      <p>The only form on the site is the optional <b>Feedback</b> button (bottom-right), provided by Feedex. If you use it, it sends what you type, any file you choose to attach, and an email address only if you choose to add one — together with the page you were on and the app version, so the report is actionable. Nothing is sent unless you submit it.</p>
       <h2>Third-party data</h2>
-      <p>The console fetches live data from the public sources listed on the <a href="/data">Data &amp; Sources</a> page. Those requests are made from your browser to those services under their own terms.</p>
+      <p>The console uses the public sources listed on the <a href="/data">Data &amp; Sources</a> page. Live aircraft positions and weather are requested through Naventra&rsquo;s own relay, so those providers see our server rather than your browser. Flight-route lookups (adsbdb.com) and the US weather fallback (api.weather.gov) are requested directly from your browser, under those services&rsquo; own terms.</p>
     </>
   );
 }
@@ -49,7 +51,9 @@ function DataSources() {
       <h2>How the scorecard is graded</h2>
       <p>When an aircraft commits to final, the engine locks its prediction; at touchdown the actual outcome is measured purely from the observed track. Only live traffic is banked into the all-time accuracy. The full methodology is in the <a href="/guide">Operator&rsquo;s Guide</a>, and the complete labeled training set is downloadable so the score can be independently verified.</p>
       <h2>Attribution</h2>
-      <p>Airport and runway data is derived from <a href="https://ourairports.com/data/" rel="external" target="_blank">OurAirports</a>, released into the public domain. ADS-B data is provided by the airplanes.live, adsb.lol and adsb.fi community networks. Weather is from the NOAA/NWS Aviation Weather Center. Naventra is grateful to these projects.</p>
+      <p>Live aircraft positions come from the community ADS-B networks <a href="https://adsb.lol" rel="external" target="_blank">adsb.lol</a> (data licensed under the <a href="https://opendatacommons.org/licenses/odbl/1-0/" rel="external" target="_blank">Open Database License (ODbL) 1.0</a>) and <a href="https://adsb.fi" rel="external" target="_blank">adsb.fi</a>. Weather is from the <a href="https://aviationweather.gov" rel="external" target="_blank">NOAA/NWS Aviation Weather Center</a>. Callsign routes are from <a href="https://www.adsbdb.com" rel="external" target="_blank">adsbdb.com</a>. Airport and runway data is derived from <a href="https://ourairports.com/data/" rel="external" target="_blank">OurAirports</a>, released into the public domain. Naventra is grateful to these projects.</p>
+      <h2>Dataset license</h2>
+      <p>The downloadable training dataset is derived from the ADS-B data above, so it is offered under the <a href="https://opendatacommons.org/licenses/odbl/1-0/" rel="external" target="_blank">ODbL 1.0</a> — you may reuse it with attribution, and share adapted versions under the same license. Naventra&rsquo;s source code is separately <a href="https://github.com/Rian-Fernando/Naventra/blob/main/LICENSE" rel="external" target="_blank">MIT-licensed</a>.</p>
       <p className="info-note">Naventra is an independent portfolio project. It is not affiliated with any aviation authority and must not be used for operational or navigational purposes.</p>
     </>
   );
@@ -83,7 +87,7 @@ const PAGES = {
   },
   '/data': {
     title: 'Data & Sources — Naventra',
-    description: 'Every data source behind Naventra: live ADS-B (airplanes.live, adsb.lol, adsb.fi), NOAA/NWS METAR & TAF weather, adsbdb.com routes, and OurAirports airport data — all free, keyless and public, with attribution.',
+    description: 'Every data source behind Naventra: live ADS-B (adsb.lol, adsb.fi), NOAA/NWS METAR & TAF weather, adsbdb.com routes, and OurAirports airport data — all free, keyless and public, with attribution.',
     body: DataSources,
   },
   '/about': {

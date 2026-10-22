@@ -16,7 +16,7 @@ export const PANELS = [
   ['forecast', 'Weather Outlook'],
   ['feed', 'AI Decision Feed'],
   ['weather', 'METAR / ATIS'],
-  ['comms', 'Radio Communications'],
+  ['comms', 'Controller Phraseology'],
 ];
 
 const ALL_ON = Object.fromEntries(PANELS.map(([k]) => [k, true]));

@@ -6,6 +6,81 @@ All notable changes to Naventra are documented here. The format is based on
 
 ## [Unreleased]
 
+### Live data only — nothing invented
+- **Removed the simulation fallback.** The console no longer switches to synthetic traffic
+  when the ADS-B feeds fail (or via a SIM button). It retries with backoff, shows
+  RECONNECTING, logs the interruption, and clears the scope after 30 s rather than show
+  positions that have stopped updating.
+- **Removed synthetic weather.** When both METAR sources failed, a fake METAR was generated
+  — and predictions locked against it were graded and banked. Now weather is a real report
+  (with its observation time), the last real report marked STALE, or UNAVAILABLE. The US
+  fallback derives its flight category from the reported ceiling/visibility instead of
+  assuming VFR. Switching airports no longer briefly applies the previous airport's weather.
+- **Removed invented numbers.** Decision "confidence" scores were a hash of the title; graded
+  decisions now show their category's real verified accuracy and sample size (from the
+  scorecard), and alerts show none. The ATIS information letter was made up from the clock and
+  is gone. The landing page shows "—" until real stats arrive instead of animating to 0.
+- **Honest labels.** The comms panel is "Controller Phraseology · GENERATED" (engine-written
+  ICAO/FAA phraseology, not recorded radio). Stands are marked as engine-proposed (real gate
+  assignments aren't public). Landing/Guide/Tour copy no longer mentions a simulation or
+  claims every airport is tracked every minute.
+- **Fewer false conflict alerts.** Unidentified TIS-B tracks ('~' hex — radar rebroadcasts
+  without ADS-B identity, usually VFR or duplicates) are excluded like VFR; diverging
+  simultaneous departures (≥15° apart, opening) and a departure beside an arrival on final
+  for a different runway are no longer flagged as losses of separation.
+- **Realistic departure rate.** ADR no longer counts every departure runway as an
+  independent stream at the 60 s wake minimum (JFK showed ~144/hr); it now uses a ~90 s
+  sustained interval with diminishing returns per extra runway (JFK ~50/hr).
+
+### Reliability & monitoring
+- `/api/health` reports each hub's last successful tick and returns **503 when any hub is
+  stale** (>10 min), so a free uptime monitor can alert on a stalled feed.
+- Header shows the feed source and data age ("LIVE · adsb.lol · 4s ago"), amber when lagging.
+- Landing stats retry after 8 s on a failed fetch instead of waiting 45 s; the landing
+  mini-radar clears stale blips and says "feed reconnecting".
+
+### UI & performance
+- Landing: the WebGL backdrop loads after first paint (entry JS 893 kB → 280 kB) and runs a
+  lite mode on phones / low-power devices (no bloom, 1×, 30 fps). Lighthouse: desktop
+  100/100/96/100, mobile performance 61 → 93.
+- Console: flight strips and the AI feed have bounded default heights (they had grown to
+  ~2,800 px, burying Runway Allocation, Tower Ops and METAR); the Separation Monitor keeps
+  one height instead of jumping 92↔220 px; the scorecard reserves its tracker strip.
+- Accessibility 90 → 100 on the console: WCAG-AA contrast for muted text, 24 px legend
+  targets, a `<main>` landmark; landing footer heading order fixed.
+
+### Dependencies & tooling
+- React 19.3, lucide-react 1.61 (local GitHub icon — brand icons were removed), three 0.186,
+  Vite 8.3.5, @vitejs/plugin-react 6.1, wrangler 4.151 — 0 known vulnerabilities.
+- `npm test` runs every suite; new `scripts/test-integrity.mjs` (18 checks) locks in "no
+  synthetic data". Python trainer deps pinned (`scripts/requirements.txt`); Node version
+  pinned via `.nvmrc` + `engines` and used by CI; setup-python v7; Dependabot groups
+  react + react-dom; public source maps.
+
+### Fixed
+- **24/7 tracker starved of live data (Aug–Sep 2026).** Every cron tick was failing with
+  `adsb 429`, cutting graded landings from ~1,000/day to ~40/day. Causes: airplanes.live
+  closed its public API to non-feeders (403), the adsb.fi call used a non-existent
+  `/v2/point` path (400), and adsb.lol rate-limits Cloudflare's shared egress IPs. The
+  worker now uses adsb.fi's documented `/api/v3/lat/…/lon/…/dist/…` endpoint with adsb.lol
+  failover, and logs every source's status when a tick fails.
+
+### Changed
+- **Provider terms compliance.** Removed airplanes.live everywhere (worker, browser, copy).
+  Worker requests to each ADS-B host are paced ≥1.1s apart (adsb.fi allows 1 req/s), a
+  429 cools that host down per `Retry-After`, and all requests — including METAR, which
+  aviationweather.gov asks for — carry an identifying User-Agent. The browser console no
+  longer polls from background tabs.
+- **Attribution & licensing.** Data & Sources now links adsb.fi (required by its terms),
+  credits adsb.lol's ODbL 1.0 license, and states that the downloadable training dataset —
+  an adapted database of that data — is offered under ODbL 1.0 (code stays MIT);
+  `/api/dataset.jsonl` declares this via `Link: rel="license"` and `X-Data-License`.
+- **Privacy page accuracy.** It claimed there was no form on the site; the Feedex feedback
+  button is one, so the page now says exactly what a report carries. It also now explains
+  that traffic/weather go through Naventra's relay while route lookups go direct.
+- Dependencies: `npm audit fix` (nanoid, postcss), Vite 8.3, wrangler 4.138 — 0 known
+  vulnerabilities in either package.
+
 ### Added
 - **Feedback widget (Feedex).** The feedback launcher is injected at build time by a
   Vite plugin (`vite/feedex.js`) — only when a `pk_fdx_…` key is configured, so local

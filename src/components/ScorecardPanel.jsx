@@ -1,4 +1,5 @@
 import { Target } from 'lucide-react';
+import { trackerConfigured } from '../lib/globalModel.js';
 
 // Rolling accuracy (trailing 8-landing window) from recent graded landings,
 // oldest→newest, as an SVG polyline — shows the AI improving over time.
@@ -38,16 +39,24 @@ export default function ScorecardPanel({ scorecard, mode, scope = 'session', glo
         <Target size={14} color="var(--green)" />
         <span className="panel-title">AI Scorecard</span>
         <span className={`badge ${global ? 'cyan' : mode === 'LIVE' ? 'green' : 'amber'}`}>
-          {global ? '● GLOBAL · 24/7' : mode === 'LIVE' ? 'LIVE-VERIFIED' : 'SIM · NOT BANKED'}
+          {global ? '● GLOBAL · 24/7' : mode === 'LIVE' ? 'LIVE-VERIFIED' : 'AWAITING LIVE DATA'}
         </span>
       </div>
 
-      {globalTotals && (
+      {/* Rendered from first paint (placeholder until the tracker answers) so the
+          scorecard doesn't grow — and shove the panels below it — on load. */}
+      {(globalTotals || trackerConfigured) && (
         <div className="learn-strip" title="The always-on tracker runs 24/7, learning from every real landing it grades across JFK, LAX and LHR — and logging each as a labeled training row.">
           <span className="ls-dot" />
           <span className="ls-text">
-            <b>{processed.toLocaleString()}</b> ops graded
-            {globalTotals.samples > 0 && <> · <b>{globalTotals.samples.toLocaleString()}</b> training rows</>}
+            {globalTotals ? (
+              <>
+                <b>{processed.toLocaleString()}</b> ops graded
+                {globalTotals.samples > 0 && <> · <b>{globalTotals.samples.toLocaleString()}</b> training rows</>}
+              </>
+            ) : (
+              <><b>—</b> ops graded · <b>—</b> training rows</>
+            )}
           </span>
           <span className="ls-tag">SELF-LEARNING · 24/7</span>
         </div>

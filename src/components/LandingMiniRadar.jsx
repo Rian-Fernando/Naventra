@@ -4,15 +4,18 @@ import { toLocalNm, deadReckon } from '../lib/geo.js';
 
 // A small, REAL radar scope for the landing hero: live ADS-B aircraft around a
 // busy hub, dead-reckoned between polls, with a sweeping beam. Same data path as
-// the console. Purely additive — if the feed is unreachable it still sweeps.
+// the console. If the feed is unreachable the beam keeps sweeping but stale
+// blips are cleared after 45s and the caption says so — no invented traffic.
 const HUB = { icao: 'JFK', lat: 40.6413, lon: -73.7781 };
 const RANGE_NM = 40;
 const SIZE = 320;
+const STALE_MS = 45000;
 
 export default function LandingMiniRadar() {
   const canvasRef = useRef(null);
   const dataRef = useRef({ aircraft: [], fetchedAt: 0 });
   const [count, setCount] = useState(null);
+  const [stale, setStale] = useState(false);
 
   // poll live traffic
   useEffect(() => {
@@ -23,7 +26,12 @@ export default function LandingMiniRadar() {
         if (!alive) return;
         dataRef.current = { aircraft: aircraft || [], fetchedAt: Date.now() };
         setCount((aircraft || []).length);
-      } catch { /* keep sweeping */ }
+        setStale(false);
+      } catch {
+        // keep sweeping; flag (and later clear) data that's no longer refreshing
+        const { fetchedAt } = dataRef.current;
+        if (!fetchedAt || Date.now() - fetchedAt > STALE_MS) setStale(true);
+      }
     };
     load();
     const t = setInterval(load, 6000);
@@ -84,7 +92,9 @@ export default function LandingMiniRadar() {
       ctx.restore();
 
       // blips (dead-reckoned from last fetch)
-      const { aircraft, fetchedAt } = dataRef.current;
+      const { fetchedAt } = dataRef.current;
+      // Never draw positions that have stopped refreshing.
+      const aircraft = now - fetchedAt > STALE_MS ? [] : dataRef.current.aircraft;
       const dt = Math.min((now - fetchedAt) / 1000, 30);
       let labels = 0;
       for (const ac of aircraft) {
@@ -127,7 +137,7 @@ export default function LandingMiniRadar() {
       <canvas ref={canvasRef} style={{ width: SIZE, height: SIZE }} />
       <div className="lp-radar-cap">
         <span className="lp-radar-dot" /> LIVE RADAR · {HUB.icao} · {RANGE_NM}NM
-        {count != null && <em>{count} aircraft</em>}
+        {stale ? <em className="lp-radar-stale">feed reconnecting</em> : count != null && <em>{count} aircraft</em>}
       </div>
     </div>
   );

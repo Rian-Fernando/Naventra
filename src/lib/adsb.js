@@ -1,23 +1,21 @@
 // Live ADS-B ingestion with multi-source failover.
 //
-// Primary  : airplanes.live  — free, CORS-open, includes type/operator metadata
-// Fallback : adsb.lol, adsb.fi — reached through the /proxy/* rewrites
-//            (vite dev proxy locally; vercel.json / netlify.toml in prod)
+// Primary  : adsb.lol — keyless, dynamic load-based limits, data under ODbL 1.0
+// Fallback : adsb.fi  — 1 req/s, personal non-commercial use, cite + link adsb.fi
+// Both are reached through the /proxy/* rewrites (no CORS): the vite dev proxy
+// locally, vercel.json / netlify.toml in prod.
 //
-// All three return the same readsb JSON schema, so one normalizer serves all.
+// airplanes.live was removed: it closed its public API to non-feeders (Aug 2026).
+// Both sources return the same readsb JSON schema, so one normalizer serves both.
 
 const SOURCES = [
-  {
-    id: 'airplanes.live',
-    url: (lat, lon, r) => `https://api.airplanes.live/v2/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${Math.round(r)}`,
-  },
   {
     id: 'adsb.lol',
     url: (lat, lon, r) => `/proxy/adsblol/v2/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${Math.round(r)}`,
   },
   {
     id: 'adsb.fi',
-    url: (lat, lon, r) => `/proxy/adsbfi/api/v2/lat/${lat.toFixed(4)}/lon/${lon.toFixed(4)}/dist/${Math.round(r)}`,
+    url: (lat, lon, r) => `/proxy/adsbfi/api/v3/lat/${lat.toFixed(4)}/lon/${lon.toFixed(4)}/dist/${Math.round(r)}`,
   },
 ];
 

@@ -1,7 +1,7 @@
 # Naventra Tracker — always-on learning worker
 
 A Cloudflare Worker that runs **24/7 on a 1-minute cron**, independent of any
-browser. Each tick it polls live ADS-B (airplanes.live) and METARs for the
+browser. Each tick it polls live ADS-B (adsb.fi, with adsb.lol failover) and METARs for the
 tracked hubs (**JFK, LAX, LHR**), runs Naventra's exact prediction + grading
 engine (shared from `../src/engine/*`), grades landings against reality, and
 updates a **shared self-learning model** in a free **D1** database. The frontend

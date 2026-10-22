@@ -35,40 +35,64 @@ function normalize(raw, now) {
   };
 }
 
-// Free, keyless ADS-B aggregators that share the /v2/point/{lat}/{lon}/{radius}
-// response shape ({ ac: [...] }). Cloudflare's shared egress IPs get rate-limited
-// (429) by any single source, so we fail over across all of them and rotate the
-// start point each minute to spread load. If every source is down we surface the
-// last error and the tick is skipped (no bad data written).
+// Free, keyless ADS-B aggregators returning readsb JSON ({ ac: [...] }). Their
+// terms, as checked 2026-09 — keep this list honest if they change again:
+//  - adsb.fi  : public endpoints 1 request/second, personal non-commercial use,
+//               must cite adsb.fi with a link. Point query is /api/v3/lat/…/dist/….
+//  - adsb.lol : no key today (feeder keys planned), dynamic load-based limits,
+//               data licensed ODbL 1.0.
+// airplanes.live was removed: it closed its public API to non-feeders (Aug 2026).
+// We identify ourselves, keep requests to one host ≥1.1s apart even across the
+// three hubs in a tick, and honour 429/Retry-After by cooling a host down rather
+// than retrying it every minute. If every source fails, the tick is skipped (no
+// bad data written) and the log names each source's status.
+const UA = 'Naventra/1.0 (+https://naventra.rianfernando.com; non-commercial portfolio)';
 const ADSB_SOURCES = [
-  (lat, lon, r) => `https://api.airplanes.live/v2/point/${lat}/${lon}/${r}`,
-  (lat, lon, r) => `https://api.adsb.lol/v2/point/${lat}/${lon}/${r}`,
-  (lat, lon, r) => `https://opendata.adsb.fi/api/v2/point/${lat}/${lon}/${r}`,
+  { host: 'opendata.adsb.fi', url: (lat, lon, r) => `https://opendata.adsb.fi/api/v3/lat/${lat}/lon/${lon}/dist/${r}` },
+  { host: 'api.adsb.lol', url: (lat, lon, r) => `https://api.adsb.lol/v2/point/${lat}/${lon}/${r}` },
 ];
+const nextSlot = new Map();  // host -> earliest ms the next request may start
+const coolUntil = new Map(); // host -> ms until which we leave it alone (after a 429)
+
+// Reserve the next request slot for a host synchronously, so the three hubs'
+// concurrent fetches queue ≥gapMs apart instead of bursting.
+async function pace(host, gapMs = 1100) {
+  const now = Date.now();
+  const at = Math.max(now, nextSlot.get(host) || 0);
+  nextSlot.set(host, at + gapMs);
+  if (at > now) await new Promise((r) => setTimeout(r, at - now));
+}
 
 async function fetchTraffic(airport) {
   const lat = airport.lat.toFixed(4), lon = airport.lon.toFixed(4);
-  const n = ADSB_SOURCES.length;
-  const start = Math.floor(Date.now() / 60000) % n; // rotate primary by the minute
-  let lastErr = 'no source';
-  for (let i = 0; i < n; i++) {
-    const build = ADSB_SOURCES[(start + i) % n];
+  const errs = [];
+  for (const src of ADSB_SOURCES) {
+    if ((coolUntil.get(src.host) || 0) > Date.now()) { errs.push(`${src.host} cooling`); continue; }
     try {
-      const res = await fetch(build(lat, lon, RADIUS_NM), {
-        headers: { 'User-Agent': 'naventra-tracker/1.0', Accept: 'application/json' },
-      });
-      if (!res.ok) { lastErr = `adsb ${res.status}`; continue; }
+      await pace(src.host);
+      const res = await fetch(src.url(lat, lon, RADIUS_NM), { headers: { 'User-Agent': UA, Accept: 'application/json' } });
+      if (res.status === 429) {
+        const ra = Number(res.headers.get('Retry-After'));
+        coolUntil.set(src.host, Date.now() + (ra > 0 ? ra * 1000 : 5 * 60000));
+        errs.push(`${src.host} 429`);
+        continue;
+      }
+      if (!res.ok) { errs.push(`${src.host} ${res.status}`); continue; }
       const data = await res.json();
       const now = Date.now();
       return (data.ac || data.aircraft || []).map((a) => normalize(a, now)).filter(Boolean);
-    } catch (e) { lastErr = `adsb ${e.message}`; }
+    } catch (e) { errs.push(`${src.host} ${e.message}`); }
   }
-  throw new Error(lastErr);
+  throw new Error(`adsb: ${errs.join('; ')}`);
 }
 
 async function fetchWx(icao) {
   try {
-    const res = await fetch(`https://aviationweather.gov/api/data/metar?ids=${icao}&format=json`);
+    // aviationweather.gov asks callers to set a custom User-Agent (≤100 req/min;
+    // we make 3/min).
+    const res = await fetch(`https://aviationweather.gov/api/data/metar?ids=${icao}&format=json`, {
+      headers: { 'User-Agent': UA, Accept: 'application/json' },
+    });
     if (!res.ok) return null;
     const arr = await res.json();
     const m = Array.isArray(arr) ? arr[0] : null;

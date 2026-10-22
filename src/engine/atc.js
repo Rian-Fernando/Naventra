@@ -1,7 +1,8 @@
 // Naventra decision core — a deterministic expert system that performs the
 // controller tasks: runway configuration, arrival sequencing, separation
 // monitoring (CPA), gate allocation and radio phraseology generation.
-// It runs identically on live ADS-B tracks and on simulated traffic.
+// It runs on live ADS-B tracks only in the app; the simulator (src/lib/sim.js)
+// exists solely to exercise the engine in the offline test suite.
 
 import { distNm, bearingDeg, velocityNmS, toLocalNm, cpa, angleDiff, windComponents, fmtAlt } from '../lib/geo.js';
 import { airlineName } from '../data/airports.js';
@@ -10,8 +11,8 @@ import { wakeCat, wakeSepNm, wakeDepartureSepSec, WAKE_LABEL } from './wake.js';
 
 export const PHASES = ['GROUND', 'DEPARTURE', 'ENROUTE', 'ARRIVAL', 'APPROACH', 'FINAL'];
 
-// Deterministic small hash → [0,1). Used for stable pseudo-random choices
-// (confidence scores, gate picks) that don't jitter between ticks.
+// Deterministic small hash → [0,1). Used to spread proposed stands across the
+// apron so they don't jitter between ticks.
 function hash01(str) {
   let h = 2166136261;
   for (let i = 0; i < str.length; i++) {
@@ -337,6 +338,11 @@ const LOOKAHEAD_S = 150;
 // their own separation and would flood the monitor with false alerts.
 function isSeparationManaged(a) {
   if (a.squawk === '1200' || a.squawk === '7000') return false;
+  // Non-ICAO targets ('~' hex) are TIS-B/ADS-R rebroadcasts of radar tracks with
+  // no verified identity — in practice VFR aircraft without ADS-B out (IFR traffic
+  // in terminal airspace is ADS-B-equipped) or duplicates of an ADS-B target.
+  // They stay on the scope but aren't IFR-separation pairs.
+  if (a.id?.[0] === '~') return false;
   if (a.category === 'A7') return false; // rotorcraft
   if (a.gs < 110 && (a.agl ?? a.altFt) < 3500) return false;
   return true;
@@ -360,18 +366,32 @@ export function detectConflicts(aircraft, airport) {
 
       const pa = toLocalNm(airport.lat, airport.lon, a.lat, a.lon);
       const pb = toLocalNm(airport.lat, airport.lon, b.lat, b.lon);
-      const { tSec, sepNm } = cpa(pa, velocityNmS(a.gs, a.track), pb, velocityNmS(b.gs, b.track));
+      const va = velocityNmS(a.gs, a.track);
+      const vb = velocityNmS(b.gs, b.track);
+      const { tSec, sepNm } = cpa(pa, va, pb, vb);
       if (tSec > LOOKAHEAD_S) continue;
 
       const nowSep = Math.hypot(pb.x - pa.x, pb.y - pa.y);
       // Two returns at the same point and altitude are one aircraft broadcast
       // twice (ICAO + TIS-B/MLAT duplicate), not a collision in progress.
       if (nowSep < 0.15 && dAlt < 150) continue;
+      // Diverging departures: two climb-outs near the field on courses at least
+      // 15° apart whose range is already opening are separated by course
+      // divergence — the standard way controllers launch parallel runways at
+      // once. Without this, routine simultaneous departures showed as critical.
+      const opening = (pb.x - pa.x) * (vb.x - va.x) + (pb.y - pa.y) * (vb.y - va.y) > 0;
+      if (a.phase === 'DEPARTURE' && b.phase === 'DEPARTURE' && a.distNm < 15 && b.distNm < 15
+        && angleDiff(a.track, b.track) >= 15 && opening) continue;
       if (a.phase === 'FINAL' && b.phase === 'FINAL') {
         // Parallel approaches are procedurally separated; same-runway in-trail
         // landing intervals are normal tower ops unless truly compressed.
         if (a.runway !== b.runway || nowSep > 0.7) continue;
       }
+      // A departure climbing out beside an arrival established on final for a
+      // DIFFERENT runway, close to the field, is tower-separated by the runway
+      // layout (parallel/crossing-runway ops), not by 3 nm radar spacing.
+      const depFinal = (a.phase === 'DEPARTURE' && b.phase === 'FINAL') || (a.phase === 'FINAL' && b.phase === 'DEPARTURE');
+      if (depFinal && a.distNm < 6 && b.distNm < 6 && a.runway && b.runway && a.runway !== b.runway) continue;
 
       const losNow = nowSep < H_SEP_NM && dAlt < V_SEP_FT;
       const losPredicted = sepNm < H_SEP_NM && Math.abs(projAltA - projAltB) < V_SEP_FT;
@@ -396,10 +416,16 @@ export function detectConflicts(aircraft, airport) {
 let evSeq = 0;
 const nid = () => `ev${++evSeq}`;
 
+// Decisions that are graded predictions carry the scorecard category they're
+// measured under, so the feed can show their REAL verified accuracy. Alerts and
+// observations (landings, handoffs, conflicts, emergencies) carry none — we
+// don't attach a made-up confidence number to anything.
+const DECISION_CAT = { SEQUENCE: 'sequence', CLEARANCE: 'runway', DEPARTURE: 'deprwy', RUNWAY_CONFIG: 'config' };
+
 function decision(type, severity, title, detail, aircraft = [], status = 'EXECUTED') {
   return {
     id: nid(), ts: Date.now(), type, severity, title, detail, aircraft, status,
-    confidence: Math.round(88 + hash01(title + type) * 11.5),
+    cat: DECISION_CAT[type] || null,
   };
 }
 

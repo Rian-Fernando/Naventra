@@ -74,7 +74,7 @@ export default function AircraftDetail({ aircraft, airport, onClose }) {
     a.reqSpacingNm ? ['Wake spacing', `${a.reqSpacingNm} nm behind ${a.leaderCs}${a.inTrailNm != null ? ` (${a.inTrailNm.toFixed(1)} now)` : ''}`] : null,
     a.seq != null ? ['Landing seq', `#${a.seq}`] : null,
     a.runway ? ['Runway', a.runway] : null,
-    a.gate ? ['Stand', a.gate] : null,
+    a.gate ? ['Proposed stand', `${a.gate} (engine)`] : null,
     a.etaMin != null && a.phase !== 'DEPARTURE' ? ['ETA field', fmtDur(a.etaMin)] : null,
     ete ? ['ETE to dest', ete] : null,
     arrClock && ete ? ['Est. arrival', arrClock] : null,

@@ -98,8 +98,7 @@ export default function Console({ route }) {
     <div className={`shell ${onGuide ? 'shell-guide' : ''} ${!onGuide && panels.comms ? 'has-comms' : ''}`} style={onGuide ? undefined : shellStyle}>
       <Header
         airport={atc.airport} icao={atc.icao} setIcao={atc.setIcao}
-        mode={atc.mode} source={atc.source}
-        forceSim={atc.forceSim} setForceSim={atc.setForceSim}
+        mode={atc.mode} source={atc.source} lastLiveAt={atc.lastLiveAt}
         kpis={atc.kpis} scorecard={atc.scorecard} onGuide={onGuide}
         view={view}
       />
@@ -108,7 +107,7 @@ export default function Console({ route }) {
         <Guide />
       ) : (
         <>
-          <div className="main" style={mainStyle}>
+          <main className="main" style={mainStyle}>
             {!anyMain && (
               <div className="empty-note" style={{ margin: 'auto' }}>
                 All panels hidden — open the ☰ menu to bring panels back.
@@ -136,7 +135,7 @@ export default function Console({ route }) {
                 <RadarPanel
                   airport={atc.airport} aircraft={atc.aircraft} conflicts={atc.conflicts}
                   runways={atc.runways} selectedId={atc.selectedId} onSelect={atc.setSelectedId}
-                  mode={atc.mode} view={view} weather={atc.weather} surface={atc.surface}
+                  mode={atc.mode} lastLiveAt={atc.lastLiveAt} view={view} weather={atc.weather} surface={atc.surface}
                 />
                 <AircraftDetail aircraft={atc.selected} airport={atc.airport} onClose={() => atc.setSelectedId(null)} />
               </div>
@@ -147,11 +146,11 @@ export default function Console({ route }) {
                 {panels.scorecard && <ResizablePanel id="scorecard"><ScorecardPanel scorecard={atc.scorecard} mode={atc.mode} scope={atc.scoreScope} globalTotals={atc.globalTotals} /></ResizablePanel>}
                 {panels.separation && <ResizablePanel id="separation"><ConflictPanel conflicts={atc.conflicts} onSelect={atc.setSelectedId} /></ResizablePanel>}
                 {panels.forecast && <ResizablePanel id="forecast"><ForecastPanel forecast={atc.forecast} airport={atc.airport} runways={atc.runways} /></ResizablePanel>}
-                {panels.feed && <ResizablePanel id="feed"><AIDecisionFeed decisions={atc.decisions} /></ResizablePanel>}
-                {panels.weather && <ResizablePanel id="weather"><WeatherPanel weather={atc.weather} airport={atc.airport} /></ResizablePanel>}
+                {panels.feed && <ResizablePanel id="feed"><AIDecisionFeed decisions={atc.decisions} scorecard={atc.scorecard} /></ResizablePanel>}
+                {panels.weather && <ResizablePanel id="weather"><WeatherPanel weather={atc.weather} airport={atc.airport} status={atc.wxStatus} /></ResizablePanel>}
               </div>
             )}
-          </div>
+          </main>
 
           {panels.comms && (
             <div className="comms-wrap">

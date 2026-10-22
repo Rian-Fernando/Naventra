@@ -27,13 +27,13 @@ const TERMS = [
 
 const PANELS = [
   [Radar, 'Radar / TRACON (center)', 'Live targets around the facility. 3D view: drag to orbit, scroll to zoom — each aircraft sits at its exaggerated true altitude with a stem down to the ground plane, so height is directly visible. 2D view is the classic top-down scope. Click any target for its full data card. Range buttons set 10–80nm; TRL toggles trails; AUTO/ALL/OFF controls data blocks.'],
-  [Target, 'AI Scorecard (top right)', 'The honesty meter. When a flight commits to the approach, the AI locks its predictions (runway, ETA, landing order, config). At touchdown the actual outcome is measured from the data and each prediction is graded ✓/✗. The headline number is the all-time percentage over live traffic only — simulated traffic is graded on screen but never banked.'],
+  [Target, 'AI Scorecard (top right)', 'The honesty meter. When a flight commits to the approach, the AI locks its predictions (runway, ETA, landing order, config). At touchdown the actual outcome is measured from the data and each prediction is graded ✓/✗. The headline number is the all-time percentage over real, live traffic — Naventra has no simulated traffic to inflate it.'],
   [AlertTriangle, 'Separation Monitor (right)', 'Conflict pairs from the CPA projection: current separation, predicted minimum and time to it. CRITICAL (red, blinking) = minima broken now. Click a pair to select it on the scope.'],
-  [Cpu, 'AI Decision Feed (right)', 'Every action the decision core takes, with its reasoning and a confidence score: radar contacts, sequence slots, approach clearances, runway configuration changes, conflict resolutions, prediction verifications.'],
-  [CloudSun, 'METAR / ATIS (bottom right)', 'Live decoded weather driving the runway allocator, plus the raw METAR line and current ATIS information letter.'],
-  [PlaneLanding, 'Flight Strips (left)', 'Arrivals / Departures / Ground tabs. Arrivals are ordered by landing sequence and carry their runway, stand and ETA.'],
+  [Cpu, 'AI Decision Feed (right)', 'Every action the decision core takes, with its reasoning: radar contacts, sequence slots, approach clearances, runway configuration changes, conflict resolutions, prediction verifications. Decisions that are graded predictions show that category\'s real verified accuracy (e.g. landing order) — never an invented confidence number.'],
+  [CloudSun, 'METAR / ATIS (bottom right)', 'Live decoded weather driving the runway allocator, plus the raw METAR line, when it was observed, and the facility\'s real tower/ATIS frequencies. If no report is available it says so — weather is never invented.'],
+  [PlaneLanding, 'Flight Strips (left)', 'Arrivals / Departures / Ground tabs. Arrivals are ordered by landing sequence and carry their runway and ETA, plus the stand the engine would propose (real gate assignments aren\'t public data, so stands are marked as proposed).'],
   [Route, 'Runway Allocation (bottom left)', 'The active configuration chosen from live wind: each runway\'s active end, role (ARR / DEP / DEP+ARR), length, head/crosswind components and ILS availability.'],
-  [Radio, 'Radio Communications (bottom)', 'The VHF transcript. Green = controller transmissions (NAVENTRA APP/TWR), cyan = pilot readbacks, on the facility\'s real frequencies.'],
+  [Radio, 'Controller Phraseology (bottom)', 'Standard ICAO/FAA phraseology the engine generates for the real traffic on the scope — green = controller (NAVENTRA APP/TWR), cyan = pilot readbacks — on the facility\'s real frequencies. It is generated, not recorded radio: live ATC audio isn\'t freely redistributable.'],
 ];
 
 export default function Guide() {
@@ -110,8 +110,7 @@ export default function Guide() {
           The loop is <b>predict → observe → measure error → adjust → repeat</b>, running on live outcomes.
           It's <em>online</em> learning: no training run, no dataset to download — the model improves one
           real operation at a time (arrivals <em>and</em> departures), and the scorecard shows whether it's
-          actually working. Only live traffic updates it (never the simulation), so it learns the real
-          world, not itself.
+          actually working. Only real, live outcomes update it, so it learns the real world, not itself.
         </p>
         <p>
           <b>What about conflicts?</b> Deliberately <em>not</em> learned from. A predicted conflict that
@@ -136,7 +135,7 @@ export default function Guide() {
           anywhere</b>, so there is nothing to hold an API key for and nothing to meter.
         </p>
         <p>
-          Every data source is <b>free and keyless</b>: live traffic from the open <b>airplanes.live</b>
+          Every data source is <b>free and keyless</b>: live traffic from the open <b>adsb.lol</b>
           ADS-B feed (with adsb.lol / adsb.fi as failovers), weather from the US government's
           <b> aviationweather.gov</b> METAR service. The browser app is static hosting; the always-on
           tracker is a <b>Cloudflare Worker</b> (free tier: a 1-minute cron is well under the limits) writing
@@ -148,11 +147,11 @@ export default function Guide() {
 
         <h2>Screen map</h2>
         <div className="guide-map">
-          <div className="gm gm-header">HEADER — facility selector · LIVE/SIM · traffic KPIs · UTC clock</div>
+          <div className="gm gm-header">HEADER — facility selector · live-feed status · traffic KPIs · UTC clock</div>
           <div className="gm gm-left">FLIGHT STRIPS<br /><span>+ RUNWAY ALLOCATION</span></div>
           <div className="gm gm-center">RADAR / TRACON<br /><span>3D · live targets · click to inspect</span></div>
           <div className="gm gm-right">AI SCORECARD<br /><span>+ SEPARATION · AI FEED · METAR</span></div>
-          <div className="gm gm-bottom">RADIO COMMUNICATIONS — VHF transcript</div>
+          <div className="gm gm-bottom">CONTROLLER PHRASEOLOGY — generated from live traffic</div>
         </div>
 
         <h2>The panels</h2>
@@ -186,12 +185,12 @@ export default function Guide() {
 
         <h2>Data sources & cadence</h2>
         <p>
-          Live traffic: <b>airplanes.live</b> (primary, ~6s polling), with <b>adsb.lol</b> and <b>adsb.fi </b>
+          Live traffic: <b>adsb.lol</b> (primary, ~6s polling, paused in background tabs), with <b>adsb.fi </b>
           as automatic failovers. Weather: <b>aviationweather.gov</b> METARs (5-minute refresh), US fallback
-          via api.weather.gov. Positions are dead-reckoned between polls for smooth motion. If every source
-          is unreachable — or you press the LIVE OPS button — a physics simulation takes over, seeded with
-          the airport's real runway geometry and carrier mix, and is clearly labeled SIM.
-          All sources are free and keyless; the entire system, including the AI core, runs in your browser.
+          via api.weather.gov. Positions are dead-reckoned between polls for smooth motion. Naventra is
+          <b>live-data only</b>: if every source is unreachable the console says so and retries — it never
+          fills the scope with simulated traffic or invents weather. All sources are free and keyless; the
+          entire AI core runs in your browser, with a 24/7 tracker grading the three hub airports.
         </p>
 
         <p className="guide-credit">

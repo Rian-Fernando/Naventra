@@ -111,6 +111,8 @@ check('dep wake: floored at 60s occupancy', wakeDepartureSepSec('M', 'M') === 60
   check('AAR positive & sane', vmc.aar > 10 && vmc.aar < 200, `${vmc.aar}`);
   check('AAR exposes drivers', vmc.meanSpacingNm > 0 && vmc.finalSpeedKt > 0);
   check('ADR positive & sane', vmc.adr > 5 && vmc.adr < 200, `${vmc.adr}`);
+  // Real major fields sustain roughly 30–90 departures/hr; the old model said 144 at JFK.
+  check('ADR realistic for a major hub (30–90/hr)', vmc.adr >= 30 && vmc.adr <= 90, `${vmc.adr}`);
   // Low-visibility: CAT III (100ft ceiling, 1/4mi vis) cuts AAR hard + sets LVP.
   const catIII = computeCapacity(ann, rwys, { clouds: [{ code: 'OVC', baseFt: 100 }], visib: '1/4' }, 20);
   check('clear sky = VMC, no LVP', vmc.approachCat === 'VMC' && vmc.lvp === false, vmc.approachCat);
@@ -151,6 +153,29 @@ check('etaVec all finite', etaVec({ dist_nm: 10, gs_kt: 140, head_kt: 8, wake: '
   check('surface: incursion detected', s1.incursions.length === 1 && s1.incursions[0].severity === 'critical');
   check('surface: occupancy detected', s1.occupancy.length === 1);
   check('surface: clear runway = no incursion', detectSurface([arr], ap, [rwy]).incursions.length === 0);
+}
+
+// Separation monitor: real conflicts are flagged; duplicate tracks and
+// diverging departures (normal ATC practice) are not.
+{
+  const ap = AIRPORTS.KJFK;
+  const nm = (lat0, lon0, eNm, nNm) => ({ lat: lat0 + nNm / 60, lon: lon0 + eNm / (60 * Math.cos(lat0 * Math.PI / 180)) });
+  const mk = (id, eNm, nNm, alt, gs, trk, phase, extra = {}) => ({
+    id, callsign: id.toUpperCase(), ...nm(ap.lat, ap.lon, eNm, nNm), altFt: alt, agl: alt, gs, track: trk, vs: 0,
+    onGround: false, squawk: '4321', category: 'A3', phase, distNm: Math.hypot(eNm, nNm), ...extra,
+  });
+  const head = atc.detectConflicts([mk('aaa111', -3, 20, 8000, 250, 90, 'ENROUTE'), mk('bbb222', 3, 20, 8000, 250, 270, 'ENROUTE')], ap);
+  check('conflict: head-on pair at same level is flagged', head.length === 1, `${head.length}`);
+  const dup = atc.detectConflicts([mk('a1b2c3', 0, 10, 5000, 210, 40, 'ARRIVAL'), mk('~a1b2c4', 0.2, 10.1, 5025, 205, 42, 'ARRIVAL')], ap);
+  check('conflict: TIS-B duplicate of one aircraft is not a conflict', dup.length === 0, `${dup.length}`);
+  const div = atc.detectConflicts([mk('dep001', 0.6, 1.9, 3000, 144, 33, 'DEPARTURE'), mk('dep002', -0.6, 1.8, 3400, 128, 325, 'DEPARTURE')], ap);
+  check('conflict: diverging simultaneous departures are not flagged', div.length === 0, `${div.length}`);
+  const conv = atc.detectConflicts([mk('dep003', -1.5, 3, 3000, 160, 60, 'DEPARTURE'), mk('dep004', 1.5, 3, 3200, 160, 300, 'DEPARTURE')], ap);
+  check('conflict: converging departures are still flagged', conv.length === 1, `${conv.length}`);
+  const df = atc.detectConflicts([mk('dep005', 0.5, 1.5, 1800, 160, 270, 'DEPARTURE', { runway: '27R' }), mk('arr005', 1.4, 1.2, 1500, 140, 270, 'FINAL', { runway: '27L' })], ap);
+  check('conflict: departure beside an arrival to a different runway is not flagged', df.length === 0, `${df.length}`);
+  const tis = atc.detectConflicts([mk('~ab12cd', -3, 20, 8000, 250, 90, 'ENROUTE'), mk('cc3344', 3, 20, 8000, 250, 270, 'ENROUTE')], ap);
+  check('conflict: unidentified TIS-B tracks are excluded like VFR', tis.length === 0, `${tis.length}`);
 }
 
 if (failures) {

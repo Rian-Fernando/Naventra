@@ -7,7 +7,7 @@ any of them or to any aviation authority.**
 
 | Data | Source | Terms |
 |---|---|---|
-| Live aircraft (ADS-B) | [airplanes.live](https://airplanes.live), [adsb.lol](https://adsb.lol), [adsb.fi](https://adsb.fi) | Community ADS-B networks, free & keyless |
+| Live aircraft (ADS-B) | [adsb.lol](https://adsb.lol) (ODbL 1.0), [adsb.fi](https://adsb.fi) | Community ADS-B networks, free & keyless; adsb.fi: personal non-commercial use |
 | Weather (METAR / TAF) | [NOAA / NWS Aviation Weather Center](https://aviationweather.gov) | U.S. government, public domain |
 | Flight routes | [adsbdb.com](https://adsbdb.com) | Free & keyless |
 | Airports & runways | [OurAirports](https://ourairports.com/data/) | Public domain |

@@ -5,21 +5,15 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # React 19 and lucide-react 1.x were migrated by hand (2026-10); react and
+    # react-dom must bump together.
     groups:
       dev-dependencies:
         dependency-type: development
+      react:
+        patterns: ["react", "react-dom"]
     labels:
       - dependencies
-    ignore:
-      # These majors are deliberate migrations, not automated bumps:
-      #  - React 19 needs react + react-dom upgraded together, plus testing.
-      #  - lucide-react 1.x renamed icon exports (e.g. Github), breaking the build.
-      - dependency-name: "react"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react-dom"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "lucide-react"
-        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: "/worker"

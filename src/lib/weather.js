@@ -2,10 +2,22 @@
 //
 // Primary  : aviationweather.gov data API (all ICAO stations, via /proxy/wx)
 // Fallback : api.weather.gov latest observation (US stations, CORS-open)
-// Final    : deterministic synthetic weather so the console never goes blank.
+//
+// If both fail we return null — never synthetic weather. Callers keep the last
+// real report (with its observation time) or show weather as unavailable.
 
 function decodeCover(cover) {
-  return { FEW: 'few', SCT: 'scattered', BKN: 'broken', OVC: 'overcast', CLR: 'sky clear', CAVOK: 'CAVOK' }[cover] || cover;
+  return { FEW: 'few', SCT: 'scattered', BKN: 'broken', OVC: 'overcast', VV: 'vertical visibility', CLR: 'sky clear', SKC: 'sky clear', CAVOK: 'CAVOK' }[cover] || cover;
+}
+
+// FAA flight category from ceiling (lowest BKN/OVC/VV, ft) and visibility (sm).
+export function flightCategory(ceilingFt, visSm) {
+  const c = ceilingFt ?? Infinity;
+  const v = visSm ?? Infinity;
+  if (c < 500 || v < 1) return 'LIFR';
+  if (c < 1000 || v < 3) return 'IFR';
+  if (c <= 3000 || v <= 5) return 'MVFR';
+  return 'VFR';
 }
 
 function fromAwc(m) {
@@ -15,65 +27,54 @@ function fromAwc(m) {
     windDir: typeof m.wdir === 'number' ? m.wdir : null, // 'VRB' → null
     windKt: m.wspd ?? 0,
     gustKt: m.wgst ?? null,
-    visib: typeof m.visib === 'string' ? m.visib : `${m.visib}`,
+    visib: m.visib == null ? null : `${m.visib}`,
     tempC: m.temp ?? null,
     dewpC: m.dewp ?? null,
     altimInHg: m.altim ? (m.altim / 33.8639).toFixed(2) : null,
     qnhHpa: m.altim ? Math.round(m.altim) : null,
-    fltCat: m.fltCat || 'VFR',
+    fltCat: m.fltCat || null,
     clouds: (m.clouds || []).map((c) => ({ code: c.cover, cover: decodeCover(c.cover), baseFt: c.base })),
-    obsTime: m.reportTime || null,
+    obsTime: m.reportTime || (m.obsTime ? new Date(m.obsTime * 1000).toISOString() : null),
     source: 'aviationweather.gov',
   };
 }
 
-function parseRawMetar(raw, station) {
-  // Minimal decode of a raw METAR string (fallback path).
+// Statute-mile visibility from a raw US METAR: P6SM, 10SM, 1/2SM, 1 1/2SM, M1/4SM.
+function parseVisSm(raw) {
+  const m = raw.match(/ (P|M)?(?:(\d+) )?(\d+)(?:\/(\d+))?SM /);
+  if (!m) return null;
+  const whole = m[2] ? parseInt(m[2], 10) : 0;
+  const part = m[4] ? parseInt(m[3], 10) / parseInt(m[4], 10) : parseInt(m[3], 10);
+  return { value: whole + part, plus: m[1] === 'P' };
+}
+
+export function parseRawMetar(raw, station, obsTime = null) {
+  // Decode of a raw METAR string (fallback path).
   const wind = raw.match(/ (\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT/);
   const temp = raw.match(/ (M?\d{2})\/(M?\d{2}) /);
   const alt = raw.match(/ A(\d{4})/);
   const q = raw.match(/ Q(\d{4})/);
   const num = (s) => (s ? parseInt(s.replace('M', '-'), 10) : null);
+  const clouds = [...raw.matchAll(/ (FEW|SCT|BKN|OVC|VV)(\d{3})/g)]
+    .map((c) => ({ code: c[1], cover: decodeCover(c[1]), baseFt: parseInt(c[2], 10) * 100 }));
+  const ceil = clouds.filter((c) => ['BKN', 'OVC', 'VV'].includes(c.code)).map((c) => c.baseFt);
+  const vis = /CAVOK/.test(raw) ? { value: 10, plus: true } : parseVisSm(raw);
   return {
     station,
-    raw,
+    raw: raw.trim(),
     windDir: wind && wind[1] !== 'VRB' ? parseInt(wind[1], 10) : null,
     windKt: wind ? parseInt(wind[2], 10) : 0,
     gustKt: wind && wind[3] ? parseInt(wind[3], 10) : null,
-    visib: /CAVOK/.test(raw) ? '10+' : (raw.match(/ (\d{1,2})SM /) || [])[1] || '10',
+    visib: vis ? `${+vis.value.toFixed(2)}${vis.plus ? '+' : ''}` : null,
     tempC: temp ? num(temp[1]) : null,
     dewpC: temp ? num(temp[2]) : null,
     altimInHg: alt ? (parseInt(alt[1], 10) / 100).toFixed(2) : q ? (parseInt(q[1], 10) / 33.8639).toFixed(2) : null,
     qnhHpa: q ? parseInt(q[1], 10) : alt ? Math.round((parseInt(alt[1], 10) / 100) * 33.8639) : null,
-    fltCat: 'VFR',
-    clouds: [],
-    obsTime: null,
+    // Derived from the reported ceiling + visibility, never assumed.
+    fltCat: vis || ceil.length ? flightCategory(ceil.length ? Math.min(...ceil) : null, vis?.value ?? null) : null,
+    clouds,
+    obsTime,
     source: 'weather.gov',
-  };
-}
-
-function synthetic(icao) {
-  // Seeded by station + hour so it is stable between polls.
-  const seed = [...icao].reduce((a, c) => a + c.charCodeAt(0), new Date().getUTCHours());
-  const dir = (seed * 37) % 360;
-  return {
-    station: icao,
-    raw: `${icao} ${String(new Date().getUTCDate()).padStart(2, '0')}${String(new Date().getUTCHours()).padStart(2, '0')}50Z ${String(Math.round(dir / 10) * 10).padStart(3, '0')}${String(8 + (seed % 9)).padStart(2, '0')}KT 10SM FEW045 SCT120 18/09 A3002 (SIMULATED)`,
-    windDir: Math.round(dir / 10) * 10,
-    windKt: 8 + (seed % 9),
-    gustKt: null,
-    visib: '10+',
-    tempC: 18,
-    dewpC: 9,
-    altimInHg: '30.02',
-    qnhHpa: 1016,
-    fltCat: 'VFR',
-    clouds: [
-      { code: 'FEW', cover: 'few', baseFt: 4500 },
-      { code: 'SCT', cover: 'scattered', baseFt: 12000 },
-    ],
-    obsTime: new Date().toISOString(),
-    source: 'simulated',
   };
 }
 
@@ -94,15 +95,10 @@ export async function fetchMetar(icao) {
       });
       if (res.ok) {
         const obs = await res.json();
-        if (obs?.properties?.rawMessage) return parseRawMetar(` ${obs.properties.rawMessage} `, icao);
+        const p = obs?.properties;
+        if (p?.rawMessage) return parseRawMetar(` ${p.rawMessage} `, icao, p.timestamp || null);
       }
     } catch { /* fall through */ }
   }
-  return synthetic(icao);
-}
-
-// ATIS information letter cycles hourly, like the real thing.
-export function atisLetter() {
-  const letters = 'ALPHA BRAVO CHARLIE DELTA ECHO FOXTROT GOLF HOTEL INDIA JULIETT KILO LIMA MIKE NOVEMBER OSCAR PAPA QUEBEC ROMEO SIERRA TANGO UNIFORM VICTOR WHISKEY XRAY YANKEE ZULU'.split(' ');
-  return letters[(new Date().getUTCHours() + new Date().getUTCDate()) % letters.length];
+  return null;
 }

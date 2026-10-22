@@ -52,10 +52,14 @@ export default function LandingScene3D() {
     const mount = mountRef.current;
     if (!mount) return undefined;
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    // Lite mode for phones / low-power devices / Data Saver: the backdrop is
+    // decorative, so skip the bloom post-process and antialiasing and render at
+    // 1× — the scene stays, but it stops costing a slow CPU seconds of work.
+    const lite = window.innerWidth < 820 || (navigator.hardwareConcurrency || 8) <= 4 || !!navigator.connection?.saveData;
 
     let renderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      renderer = new THREE.WebGLRenderer({ antialias: !lite, powerPreference: lite ? 'low-power' : 'high-performance' });
     } catch {
       mount.classList.add('scene-failed');
       return undefined;
@@ -63,7 +67,7 @@ export default function LandingScene3D() {
 
     const W = () => mount.clientWidth || window.innerWidth;
     const H = () => mount.clientHeight || window.innerHeight;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 820 ? 1.5 : 2));
+    renderer.setPixelRatio(lite ? 1 : Math.min(window.devicePixelRatio, 2));
     renderer.setSize(W(), H());
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.92;
@@ -290,7 +294,7 @@ export default function LandingScene3D() {
 
     // ---- postprocessing (gentle bloom) ------------------------------------
     let composer = null;
-    try {
+    if (!lite) try {
       composer = new EffectComposer(renderer);
       composer.addPass(new RenderPass(scene, camera));
       composer.addPass(new UnrealBloomPass(new THREE.Vector2(W(), H()), 0.55, 0.5, 0.22));
@@ -320,9 +324,13 @@ export default function LandingScene3D() {
     io.observe(mount);
     const tgt = new THREE.Vector3();
 
+    let lastFrame = 0;
     const tick = (now) => {
       raf = requestAnimationFrame(tick);
       if (!running || document.hidden) return;
+      // Lite devices render the decorative backdrop at ~30 fps (battery, heat).
+      if (lite && now - lastFrame < 32) return;
+      lastFrame = now;
       const dt = Math.min((now - t0) / 1000, 0.05); t0 = now;
 
       curP += (targetP - curP) * 0.045;

@@ -48,14 +48,30 @@ export default function RadarPanel(props) {
         <Radar size={14} color="var(--green)" />
         <span className="panel-title">Radar / TRACON — {airport.icao}</span>
         <span className="mono-sm">{scope === '3D' ? 'drag to orbit · scroll to zoom' : 'scroll to zoom · drag to pan'}</span>
-        <span className={`badge ${mode === 'LIVE' ? 'green' : mode === 'SIM' ? 'amber' : ''}`}>
-          {mode === 'LIVE' ? '● LIVE ADS-B' : mode === 'SIM' ? '◌ SIMULATION' : '… ACQUIRING'}
+        <span className={`badge ${mode === 'LIVE' ? 'green' : mode === 'RECONNECTING' ? 'amber' : ''}`}>
+          {mode === 'LIVE' ? '● LIVE ADS-B' : mode === 'RECONNECTING' ? '◌ RECONNECTING' : '… ACQUIRING'}
         </span>
       </div>
       <div className="radar-body">
         {scope === '3D'
           ? <Radar3D {...viewProps} wxEnabled={showWx} onUnavailable={() => setScope('2D')} />
           : <RadarScope {...viewProps} />}
+        {/* Honest empty states: we never fill the scope with invented traffic. */}
+        {aircraft.length === 0 && mode !== 'CONNECTING' && (
+          <div className={`scope-state ${mode === 'RECONNECTING' ? 'down' : ''}`} role="status">
+            {mode === 'RECONNECTING' ? (
+              <>
+                <b>Live feed interrupted — reconnecting</b>
+                <span>Every ADS-B source is unreachable right now. Naventra shows only real aircraft, so the scope stays empty until live data returns.</span>
+              </>
+            ) : (
+              <>
+                <b>No aircraft broadcasting nearby</b>
+                <span>The live feed is up, but no ADS-B targets are within range of {airport.icao} at the moment — common late at night local time.</span>
+              </>
+            )}
+          </div>
+        )}
         {/* 3D renders weather in-scene (on the grid); the flat overlay is only for the 2D scope. */}
         {scope === '2D' && showWx && <WeatherFX weather={weather} />}
         {wxfx.kind !== 'clear' && (

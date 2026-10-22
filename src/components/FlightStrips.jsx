@@ -84,7 +84,7 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
             </div>
             <div className="strip-bot">
               {a.runway && <span className="rwy">RWY {a.runway}</span>}
-              {a.gate && <span className="gate">STAND {a.gate}</span>}
+              {a.gate && <span className="gate" title="Stand proposed by the engine — real gate assignments aren't public data">STAND {a.gate}?</span>}
               {endpoint && (
                 <span className="route">{tab === 'DEP' ? '→' : '←'} {endpoint.iata || endpoint.city}</span>
               )}

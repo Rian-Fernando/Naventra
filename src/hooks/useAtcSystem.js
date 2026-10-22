@@ -4,7 +4,6 @@ import { fetchLiveTraffic } from '../lib/adsb.js';
 import { fetchMetar } from '../lib/weather.js';
 import { fetchTaf } from '../lib/forecast.js';
 import { buildOutlook } from '../engine/forecast.js';
-import { SimEngine } from '../lib/sim.js';
 import { allocateRunways, annotateAircraft, detectConflicts, generateEvents, computeKpis, inferActiveArrivals, departureEnd } from '../engine/atc.js';
 import { computeCapacity } from '../engine/capacity.js';
 import { detectSurface } from '../engine/surface.js';
@@ -15,7 +14,11 @@ import { prefetchRoutes } from '../lib/route.js';
 
 const RADIUS_NM = 50;
 const LIVE_POLL_MS = 6000;
-const SIM_TICK_MS = 1500;
+// Retry backoff while the live feed is down, and how long last-known traffic may
+// stay on the scope before it is cleared. Naventra never substitutes simulated
+// traffic: no live data means an empty, clearly-labelled scope.
+const RETRY_MS = [3000, 6000, 12000, 20000];
+const STALE_CLEAR_MS = 30000;
 const WX_POLL_MS = 5 * 60 * 1000;
 const MAX_DECISIONS = 80;
 const MAX_COMMS = 140;
@@ -32,8 +35,9 @@ export function useAtcSystem() {
     u.searchParams.set('airport', icao);
     window.history.replaceState(null, '', u);
   }, [icao]);
-  const [forceSim, setForceSim] = useState(false);
-  const [mode, setMode] = useState('CONNECTING'); // CONNECTING | LIVE | SIM
+  const [mode, setMode] = useState('CONNECTING'); // CONNECTING | LIVE | RECONNECTING
+  const [lastLiveAt, setLastLiveAt] = useState(null); // ms of the last successful live poll
+  const [wxStatus, setWxStatus] = useState('loading'); // loading | ok | stale | unavailable
   const [source, setSource] = useState(null);
   const [weather, setWeather] = useState(null);
   const [aircraft, setAircraft] = useState([]);
@@ -53,9 +57,9 @@ export function useAtcSystem() {
     prevAnnotated: [],
     prevConflictIds: new Set(),
     gateMap: {},
-    sim: null,
     tracker: null,
     failCount: 0,
+    lastLiveAt: 0,
     weather: null,
     runways: [],
     rwySignature: '',
@@ -72,7 +76,7 @@ export function useAtcSystem() {
     if (evComms.length) setComms((c) => [...c, ...evComms.slice(0, 8)].slice(-MAX_COMMS));
   }, []);
 
-  // Shared post-processing for both live and simulated tracks.
+  // Engine post-processing for each live snapshot.
   const runEngine = useCallback((tracks, ap, isLive) => {
     const r = ref.current;
     const priorFn = r.globalPrior || runwayPrior;
@@ -108,7 +112,6 @@ export function useAtcSystem() {
         detail: ev.text + (ev.entry ? ` ${ev.entry.items.map((i) => `${i.ok ? '✓' : '✗'} ${i.cat}`).join(' · ')}` : ''),
         aircraft: [ev.callsign],
         status: ev.kind === 'goaround' ? 'MONITORING' : 'VERIFIED',
-        confidence: 100,
       });
     }
     setScorecard(r.tracker.getState());
@@ -152,9 +155,9 @@ export function useAtcSystem() {
     r.prevAnnotated = [];
     r.prevConflictIds = new Set();
     r.gateMap = {};
-    r.sim = null;
     r.tracker = null;
     r.failCount = 0;
+    r.lastLiveAt = 0;
     r.runways = [];
     r.rwySignature = '';
     r.observedConfig = null;
@@ -166,6 +169,7 @@ export function useAtcSystem() {
     setSelectedId(null);
     setMode('CONNECTING');
     setSource(null);
+    setLastLiveAt(null);
     setGlobalScorecard(null);
   }, [icao]);
 
@@ -202,10 +206,21 @@ export function useAtcSystem() {
     const r = ref.current;
     const gen = r.generation;
     let cancelled = false;
+    // Don't carry the previous airport's weather into this one.
+    r.weather = null;
+    setWeather(null);
+    setWxStatus('loading');
 
     async function updateWx() {
       const wx = await fetchMetar(icao);
       if (cancelled || gen !== r.generation) return;
+      // Never invent weather. If both real sources fail, keep the last real
+      // report (its observation time is shown) or report it as unavailable.
+      if (!wx) {
+        setWxStatus(r.weather ? 'stale' : 'unavailable');
+        return;
+      }
+      setWxStatus('ok');
       r.weather = wx;
       setWeather(wx);
       const rwys = allocateRunways(airport, wx);
@@ -214,7 +229,6 @@ export function useAtcSystem() {
         const wasConfigured = !!r.rwySignature;
         r.rwySignature = sig;
         r.runways = rwys;
-        r.sim?.setRunways(rwys);
         setRunways(rwys);
         const arr = rwys.filter((x) => x.role.includes('ARR')).map((x) => x.activeEnd).join(', ');
         const dep = rwys.filter((x) => x.role.includes('DEP')).map((x) => x.activeEnd).join(', ');
@@ -223,7 +237,7 @@ export function useAtcSystem() {
           severity: 'advisory',
           title: wasConfigured ? 'Runway configuration change' : `Active configuration — ${airport.iata}`,
           detail: `Wind ${wx.windDir ?? 'VRB'}°/${wx.windKt}kt${wx.gustKt ? `G${wx.gustKt}` : ''}. Arrivals: ${arr}. Departures: ${dep}. Optimized for max headwind component.`,
-          aircraft: [], status: 'EXECUTED', confidence: 97,
+          aircraft: [], status: 'EXECUTED', cat: 'config',
         }], []);
       }
     }
@@ -248,21 +262,31 @@ export function useAtcSystem() {
     return () => { cancelled = true; clearInterval(t); };
   }, [icao, airport]);
 
-  // Traffic loop — live with failover, sim fallback.
+  // Traffic loop — live data only. On failure we retry with backoff and say so;
+  // we never fill the scope with simulated traffic.
   useEffect(() => {
     const r = ref.current;
     const gen = r.generation;
     let stop = false;
     let timer = null;
 
+    const systemEvent = (title, detail, severity) => pushEvents([{
+      id: `sys${Date.now()}`, ts: Date.now(), type: 'SYSTEM', severity,
+      title, detail, aircraft: [], status: 'EXECUTED',
+    }], []);
+
     async function liveTick() {
       if (stop || gen !== r.generation) return;
-      if (forceSim) { simTick(); return; }
+      // Don't poll the community ADS-B feeds from a background tab — every
+      // visitor shares our proxy's IP, and the radar dead-reckons on return.
+      if (document.hidden) { timer = setTimeout(liveTick, LIVE_POLL_MS); return; }
       try {
         const { aircraft: tracks, source: src } = await fetchLiveTraffic(airport.lat, airport.lon, RADIUS_NM);
         if (stop || gen !== r.generation) return;
+        if (r.failCount >= 2) systemEvent('Live feed restored', `Receiving real ADS-B traffic again via ${src}.`, 'info');
         r.failCount = 0;
-        r.sim = null;
+        r.lastLiveAt = Date.now();
+        setLastLiveAt(r.lastLiveAt);
         setMode('LIVE');
         setSource(src);
         runEngine(tracks.filter((t) => t.altFt == null || t.altFt < 60000), airport, true);
@@ -270,33 +294,31 @@ export function useAtcSystem() {
       } catch {
         if (stop || gen !== r.generation) return;
         r.failCount++;
-        if (r.failCount >= 2) { simTick(); } else { timer = setTimeout(liveTick, 2500); }
+        if (r.failCount === 2) {
+          setMode('RECONNECTING');
+          systemEvent('Live feed interrupted — reconnecting',
+            'Every ADS-B source failed to respond. Naventra never substitutes simulated traffic: the scope clears if no live data arrives within 30 seconds.',
+            'warning');
+        }
+        // Don't keep showing positions that are no longer being refreshed.
+        const staleIn = r.lastLiveAt ? r.lastLiveAt + STALE_CLEAR_MS - Date.now() : Infinity;
+        if (staleIn <= 0 && r.prevAnnotated.length) {
+          r.prevAnnotated = [];
+          r.prevConflictIds = new Set();
+          setAircraft([]);
+          setConflicts([]);
+        }
+        // Back off, but make sure a retry lands just after the stale deadline so
+        // the scope clears on time rather than whenever the backoff next fires.
+        const backoff = RETRY_MS[Math.min(r.failCount - 1, RETRY_MS.length - 1)];
+        const delay = staleIn > 0 && r.prevAnnotated.length ? Math.min(backoff, staleIn + 250) : backoff;
+        timer = setTimeout(liveTick, delay);
       }
-    }
-
-    function simTick() {
-      if (stop || gen !== r.generation) return;
-      if (!r.sim) {
-        r.sim = new SimEngine(airport, r.runways.length ? r.runways : allocateRunways(airport, r.weather));
-        setMode('SIM');
-        setSource('local physics engine');
-        pushEvents([{
-          id: `sim${Date.now()}`, ts: Date.now(), type: 'SYSTEM', severity: 'advisory',
-          title: forceSim ? 'Simulation mode engaged' : 'Live feed unavailable — simulation engaged',
-          detail: `Traffic synthesized from ${airport.icao} runway geometry, carrier mix and current weather. ${forceSim ? 'Toggle LIVE to reconnect.' : 'Live reconnect attempts continue in background.'}`,
-          aircraft: [], status: 'EXECUTED', confidence: 100,
-        }], []);
-      }
-      const tracks = r.sim.tick(SIM_TICK_MS / 1000);
-      runEngine(tracks, airport, false);
-      // Periodically retry live unless the user pinned SIM.
-      const shouldRetryLive = !forceSim && Math.random() < 0.08;
-      timer = setTimeout(shouldRetryLive ? liveTick : simTick, SIM_TICK_MS);
     }
 
     liveTick();
     return () => { stop = true; clearTimeout(timer); };
-  }, [icao, airport, forceSim, runEngine, pushEvents]);
+  }, [icao, airport, runEngine, pushEvents]);
 
   const kpis = useMemo(() => computeKpis(aircraft, conflicts), [aircraft, conflicts]);
 
@@ -329,7 +351,7 @@ export function useAtcSystem() {
 
   return {
     airport, icao, setIcao,
-    mode, source, forceSim, setForceSim,
+    mode, source, lastLiveAt, wxStatus,
     weather, aircraft, runways, conflicts, decisions, comms, kpis, opsStats, capacity, surface,
     scorecard: shownScorecard, scoreScope, globalTotals, forecast,
     selected, selectedId, setSelectedId,

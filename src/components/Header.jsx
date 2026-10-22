@@ -6,7 +6,7 @@ import { useSettings } from '../hooks/useSettings.jsx';
 import ConsoleMenu from './ConsoleMenu.jsx';
 import SettingsModal from './SettingsModal.jsx';
 
-export default function Header({ airport, icao, setIcao, mode, source, forceSim, setForceSim, kpis, scorecard, onGuide, view }) {
+export default function Header({ airport, icao, setIcao, mode, source, lastLiveAt, kpis, scorecard, onGuide, view }) {
   const [now, setNow] = useState(new Date());
   const [showSettings, setShowSettings] = useState(false);
   const { settings } = useSettings();
@@ -63,15 +63,24 @@ export default function Header({ airport, icao, setIcao, mode, source, forceSim,
         </select>
       </div>
 
-      <button
-        className={`livebtn ${mode === 'SIM' ? 'sim' : mode === 'CONNECTING' ? 'connecting' : ''}`}
-        onClick={() => setForceSim(!forceSim)}
-        title={forceSim ? 'Switch back to live ADS-B feed' : 'Force simulation mode'}
+      {/* Read-only feed status. Naventra is live-data only — there is no
+          simulation to switch to — so this reports freshness instead. */}
+      <div
+        className={`livebtn ${mode === 'RECONNECTING' ? 'down' : mode === 'CONNECTING' ? 'connecting' : lastLiveAt && now - lastLiveAt > 20000 ? 'lagging' : ''}`}
+        role="status"
+        aria-live="polite"
+        title={lastLiveAt
+          ? `Real ADS-B traffic from ${source}. Last update ${new Date(lastLiveAt).toISOString().slice(11, 19)}Z.`
+          : 'Connecting to the live ADS-B feed'}
       >
         <span className="dot" />
-        {mode === 'LIVE' ? 'LIVE OPS' : mode === 'SIM' ? 'SIM OPS' : 'ACQUIRING'}
-        <span className="mono-sm livebtn-src" style={{ letterSpacing: 0 }}>{source ? `· ${source}` : ''}</span>
-      </button>
+        {mode === 'LIVE' ? 'LIVE' : mode === 'RECONNECTING' ? 'RECONNECTING' : 'ACQUIRING'}
+        {lastLiveAt && (
+          <span className="mono-sm livebtn-src" style={{ letterSpacing: 0 }}>
+            · {source} · {Math.max(0, Math.round((now - lastLiveAt) / 1000))}s ago
+          </span>
+        )}
+      </div>
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       <a className={`nav-link ${onGuide ? 'on' : ''}`} href={onGuide ? '/live' : '/guide'}>

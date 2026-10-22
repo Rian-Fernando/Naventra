@@ -16,9 +16,9 @@ const STEPS = [
   { sel: '[data-tour="scorecard"]', panel: 'scorecard', title: 'The AI scorecard', body: 'The honesty meter. When a flight commits to final the AI locks its prediction, then grades it ✓/✗ against the real landing. You see all-time and last-24h accuracy, per category.' },
   { sel: '[data-tour="separation"]', panel: 'separation', title: 'Separation monitor', body: 'Conflict pairs from closest-point-of-approach maths, projected 150 seconds ahead. Red and blinking means the 3 nm / 1,000 ft minima are broken now.' },
   { sel: '[data-tour="forecast"]', panel: 'forecast', title: 'Weather outlook', body: 'The live TAF forecast: when the wind will flip the runways, plus a disruption-risk estimate for each period. A HIGH chip means stressed operations likely.' },
-  { sel: '[data-tour="feed"]', panel: 'feed', title: 'AI decision feed', body: 'Every action the engine takes, with its reasoning and a confidence score — clearances, sequencing, runway changes, conflict calls.' },
+  { sel: '[data-tour="feed"]', panel: 'feed', title: 'AI decision feed', body: 'Every action the engine takes, with its reasoning — clearances, sequencing, runway changes, conflict calls. Graded decisions show their real verified accuracy.' },
   { sel: '[data-tour="weather"]', panel: 'weather', title: 'Weather — METAR / ATIS', body: 'The decoded live weather that drives runway selection: wind, visibility, altimeter, temperature and ceiling — plus the raw METAR and the current ATIS information letter.' },
-  { sel: '.comms-wrap', panel: 'comms', title: 'Radio communications', body: 'The VHF transcript on the facility’s real frequencies — green is the controller, cyan is the pilot readback.' },
+  { sel: '.comms-wrap', panel: 'comms', title: 'Controller phraseology', body: 'Standard ICAO/FAA phraseology the engine generates for the live traffic, on the facility’s real frequencies (not recorded radio) — green is the controller, cyan is the pilot readback.' },
   { sel: '.cmenu-btn', title: 'The menu — settings & more', body: 'Open this menu any time for Display settings (units: °C/°F, knots/mph/km-h, nm/km/mi), layout presets, which panels to show, and the full Operator’s Guide. You can replay this tour from here too. That’s it — enjoy the sector!' },
 ];
 

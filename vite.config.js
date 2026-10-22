@@ -9,6 +9,9 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url)))
 // Production equivalents live in vercel.json / netlify.toml.
 export default defineConfig(({ mode }) => ({
   plugins: [react(), feedexPlugin(mode)],
+  // Public source maps: the repo is open source anyway, and they make production
+  // errors debuggable (and satisfy Lighthouse's best-practices audit).
+  build: { sourcemap: true },
   // App version + build id — attached to feedback reports as non-sensitive context.
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),

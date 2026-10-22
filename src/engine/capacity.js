@@ -40,6 +40,9 @@ export function approachCategory(ceilingFt, visSm) {
   return { cat: 'VMC', lvp: false, factor: 1.0 };
 }
 
+// Sustained per-runway departure interval (see ADR below).
+const SUSTAINED_DEP_GAP_S = 90;
+
 export function computeCapacity(annotated, runways, weather, arrHr = 0) {
   const arrRwys = runways.filter((r) => r.role.includes('ARR'));
   const nRwy = Math.max(1, arrRwys.length);
@@ -79,17 +82,23 @@ export function computeCapacity(annotated, runways, weather, arrHr = 0) {
     ? Math.round(((inbound.length - capacity15) / Math.max(1, aar)) * 60)
     : 0;
 
-  // Airport Departure Rate (ADR) — the same idea, time-based. Departure interval
-  // comes from the wake-on-departure mix (≥60 s runway occupancy). Runways that
-  // also take arrivals (DEP+ARR) share their slots, so they add only ~half a
-  // departure stream.
+  // Airport Departure Rate (ADR) — the same idea, time-based. The wake-on-
+  // departure minima (≥60 s) are floors, not a sustainable rate: line-up and
+  // diverging-departure (SID) spacing mean a runway sustains roughly one
+  // departure per ~90 s. Extra departure runways share departure airspace and
+  // often cross or converge, so beyond the first each adds only part of a stream
+  // (dedicated ~0.4, shared DEP+ARR ~0.25). Previously each dedicated runway
+  // counted as a full independent stream, which put JFK at ~144/hr — roughly 3×
+  // what a real field runs.
   const depRwys = runways.filter((r) => r.role.includes('DEP'));
   const departures = annotated.filter((a) => a.phase === 'DEPARTURE');
   const gaps = departures.map((a) => a.reqDepGapSec).filter((x) => x != null);
-  const meanDepGapSec = Math.round(mean(gaps) ?? 75);
+  const meanDepGapSec = Math.round(Math.max(SUSTAINED_DEP_GAP_S, mean(gaps) ?? SUSTAINED_DEP_GAP_S));
   const dedicated = depRwys.filter((r) => r.role === 'DEP').length;
-  const depStreams = Math.max(1, dedicated + (depRwys.length - dedicated) * 0.5);
-  const adr = Math.round(depStreams * (3600 / Math.max(60, meanDepGapSec)) * weatherFactor);
+  const shared = depRwys.length - dedicated;
+  const depStreams = depRwys.length === 0 ? 1
+    : 1 + Math.max(0, dedicated - 1) * 0.4 + (dedicated ? shared : shared - 1) * 0.25;
+  const adr = Math.round(depStreams * (3600 / meanDepGapSec) * weatherFactor);
 
   return {
     aar, perRunwayRate: Math.round(perRunwayRate), arrRwyCount: nRwy,

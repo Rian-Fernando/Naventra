@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-import { Radar, Cpu, CloudSun, ShieldAlert, Boxes, Activity, ArrowRight, Github, Check } from 'lucide-react';
-import LandingScene3D from '../components/LandingScene3D.jsx';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Radar, Cpu, CloudSun, ShieldAlert, Boxes, Activity, ArrowRight, Check } from 'lucide-react';
+import GithubIcon from '../components/GithubIcon.jsx';
+// The WebGL backdrop pulls in all of three.js; load it after first paint so the
+// hero copy, stats and buttons render immediately (better LCP on slow links).
+const LandingScene3D = lazy(() => import('../components/LandingScene3D.jsx'));
 import LandingMiniRadar from '../components/LandingMiniRadar.jsx';
 import { fetchGlobalScorecard } from '../lib/globalModel.js';
 import { AIRPORT_LIST } from '../data/airports.js';
@@ -15,7 +18,7 @@ const FEATURES = [
   [CloudSun, 'Forecast-aware runways', 'It reads the live METAR and TAF forecast, computes head/crosswind for every runway end, and predicts when the wind will flip the whole configuration — before it happens.'],
   [ShieldAlert, 'Separation monitoring', 'Closest-point-of-approach math projects every aircraft pair 150 seconds ahead, flagging losses of separation before they occur.'],
   [Boxes, '3D radar & airport layout', 'Orbit a true-to-scale 3D scope, zoom to the field to see real runways, terminals and gates, and follow any aircraft in a 3D chase cam.'],
-  [Activity, 'Self-learning, always on', 'A cloud model runs every minute, learning runway patterns and timing bias from each real landing — the accuracy climbs on its own.'],
+  [Activity, 'Self-learning, always on', 'A cloud model runs every minute, learning runway patterns and timing bias from each real landing at JFK, LAX and Heathrow — and the scorecard shows honestly whether it’s working.'],
 ];
 
 const STEPS = [
@@ -50,7 +53,7 @@ function useCountUp(target, run, ms = 1300) {
 
 const HONEST = [
   ['Free & keyless sources', 'Live ADS-B, METAR/TAF weather and public airport data — every feed is free and needs no API key.'],
-  ['Live traffic only is scored', 'Only real traffic banks into the all-time accuracy. The built-in simulation is graded on screen but never persisted.'],
+  ['Live data only', 'Every aircraft and weather report is real. If the feeds go down, the console says so — it never fills in with simulated traffic or invented weather.'],
   ['Locked before the outcome', 'Each prediction is frozen before the aircraft lands, then measured from observation alone — no hindsight.'],
   ['Auditable, not marketing', 'The full labeled training dataset is downloadable, so the scorecard can be independently checked.'],
 ];
@@ -62,11 +65,23 @@ const FAQ = [
   ['Is Naventra a real air traffic control system?', 'No. Naventra is an independent portfolio project and demonstration. It is not affiliated with any aviation authority and must not be used for operational or navigational purposes. It works with real live data but is a showcase of an AI decision engine, not certified air traffic control.'],
   ['How does Naventra grade its own accuracy?', 'When an aircraft commits to final, the engine locks its prediction — which runway, the touchdown time and the landing order. At touchdown it measures that prediction against the actual outcome observed from ADS-B, and publishes the running accuracy 24/7. Only real live traffic counts toward the score.'],
   ['Is Naventra free to use?', 'Yes. Naventra is completely free, with no sign-up, no login and no API keys. Every data source — ADS-B traffic, weather and airport data — is free, keyless and public.'],
-  ['What data does Naventra use?', 'Live ADS-B transponder feeds (airplanes.live, adsb.lol and adsb.fi), NOAA/NWS METAR and TAF weather, callsign routes from adsbdb.com, and airport and runway geometry from OurAirports. Every source is free and requires no API key.'],
+  ['What data does Naventra use?', 'Live ADS-B transponder feeds (adsb.lol and adsb.fi), NOAA/NWS METAR and TAF weather, callsign routes from adsbdb.com, and airport and runway geometry from OurAirports. Every source is free and requires no API key.'],
   ['Who built Naventra?', 'Naventra was designed and built by Rian Fernando as a portfolio project. The full source is on GitHub, and the complete labeled training dataset is downloadable so the accuracy score can be independently verified.'],
 ];
 
 export default function Landing() {
+  // Start the decorative 3D backdrop once the browser is idle, so the hero,
+  // stats and buttons are interactive first (matters most on slower phones).
+  const [show3D, setShow3D] = useState(false);
+  useEffect(() => {
+    const go = () => setShow3D(true);
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(go, { timeout: 2000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const t = setTimeout(go, 600);
+    return () => clearTimeout(t);
+  }, []);
   const [stats, setStats] = useState(null);
   const [seen, setSeen] = useState(false);
   const statRef = useRef(null);
@@ -80,11 +95,17 @@ export default function Landing() {
     });
     document.body.classList.add('landing-mode');
     let alive = true;
-    const load = () => fetchGlobalScorecard().then((s) => alive && s && setStats(s)).catch(() => {});
+    let timer;
+    // Refresh every 45s; after a failed fetch (slow device, flaky network) retry
+    // in 8s instead, so the stats don't sit on a placeholder for 45 seconds.
+    const load = async () => {
+      const s = await fetchGlobalScorecard().catch(() => null);
+      if (!alive) return;
+      if (s) setStats(s);
+      timer = setTimeout(load, s ? 45000 : 8000);
+    };
     load();
-    // Keep the stats + live ticker current without a page refresh.
-    const poll = setInterval(load, 45000);
-    return () => { alive = false; clearInterval(poll); document.body.classList.remove('landing-mode'); };
+    return () => { alive = false; clearTimeout(timer); document.body.classList.remove('landing-mode'); };
   }, []);
 
   // Scroll-reveal for any .reveal element.
@@ -111,10 +132,11 @@ export default function Landing() {
 
   const scrollTo = (id) => (e) => { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); };
   const ticker = (stats?.recent || []).filter((r) => r.items?.length).slice(0, 12);
+  const lastGradedMin = stats?.recent?.[0]?.ts ? Math.max(0, Math.round((Date.now() - stats.recent[0].ts) / 60000)) : null;
 
   return (
     <div className="lp">
-      <LandingScene3D />
+      {show3D && <Suspense fallback={null}><LandingScene3D /></Suspense>}
       <div className="lp-vignette" />
 
       {/* ---------------------------------------------------------- nav ---- */}
@@ -156,10 +178,11 @@ export default function Landing() {
 
       {/* -------------------------------------------------------- stats ---- */}
       <section className="lp-stats reveal" id="stats" ref={statRef}>
-        <div className="lp-stat"><b>{pct}<span>%</span></b><span className="lp-stat-l">recent prediction accuracy</span></div>
-        <div className="lp-stat"><b>{ops.toLocaleString()}</b><span className="lp-stat-l">real operations graded</span></div>
-        <div className="lp-stat"><b>{rows.toLocaleString()}</b><span className="lp-stat-l">labeled training rows</span></div>
-        <div className="lp-stat"><b>{AIRPORT_COUNT}</b><span className="lp-stat-l">airports · updated every minute</span></div>
+        {/* Until real numbers arrive, show a placeholder — never a fake zero. */}
+        <div className="lp-stat"><b>{stats ? <>{pct}<span>%</span></> : '—'}</b><span className="lp-stat-l">recent prediction accuracy</span></div>
+        <div className="lp-stat"><b>{stats ? ops.toLocaleString() : '—'}</b><span className="lp-stat-l">real operations graded</span></div>
+        <div className="lp-stat"><b>{stats ? rows.toLocaleString() : '—'}</b><span className="lp-stat-l">labeled training rows</span></div>
+        <div className="lp-stat"><b>{AIRPORT_COUNT}</b><span className="lp-stat-l">airports with live traffic · 3 graded 24/7</span></div>
       </section>
 
       {/* ---------------------------------------------------------- how ---- */}
@@ -184,6 +207,9 @@ export default function Landing() {
         <p className="lp-live-sub">
           These are real predictions the always-on model just locked and scored against actual landings and
           departures across JFK, LAX and London Heathrow.
+          {lastGradedMin != null && (
+            <span className="lp-live-fresh"> Most recent grade: {lastGradedMin < 1 ? 'under a minute' : `${lastGradedMin} min`} ago.</span>
+          )}
         </p>
         {ticker.length > 0 ? (
           <div className="lp-ticker">
@@ -281,19 +307,19 @@ export default function Landing() {
           </div>
           <div className="lp-foot-cols">
             <div>
-              <h4>Product</h4>
+              <h3>Product</h3>
               <a href="/live">Live console</a>
               <a href="/guide">Operator&rsquo;s guide</a>
               <a href="/data">Data &amp; sources</a>
             </div>
             <div>
-              <h4>Project</h4>
+              <h3>Project</h3>
               <a href="/about">About</a>
-              <a href="https://github.com/Rian-Fernando/Naventra" rel="external" target="_blank"><Github size={13} /> Source</a>
+              <a href="https://github.com/Rian-Fernando/Naventra" rel="external" target="_blank"><GithubIcon size={13} /> Source</a>
               <a href="https://rianfernando.com" rel="external" target="_blank">Portfolio</a>
             </div>
             <div>
-              <h4>Legal</h4>
+              <h3>Legal</h3>
               <a href="/privacy">Privacy</a>
               <a href="/data">Attribution</a>
             </div>

@@ -2,7 +2,9 @@ import { AlertTriangle, ShieldCheck } from 'lucide-react';
 
 export default function ConflictPanel({ conflicts, onSelect }) {
   return (
-    <div className="panel conflict-panel" style={{ maxHeight: conflicts.length ? 220 : 92, transition: 'max-height 0.3s' }}>
+    // Constant height (see .conflict-panel in global.css): conflicts scroll inside
+    // it, so the panels below never jump when a conflict appears or clears.
+    <div className="panel conflict-panel">
       <div className="panel-head">
         <AlertTriangle size={14} color={conflicts.length ? 'var(--red)' : 'var(--green)'} />
         <span className="panel-title">Separation Monitor</span>
@@ -14,7 +16,10 @@ export default function ConflictPanel({ conflicts, onSelect }) {
         {conflicts.length === 0 && (
           <div className="all-clear">
             <ShieldCheck size={15} />
-            All pairs above minima — 3nm / 1,000ft maintained
+            <div>
+              All pairs above minima — 3nm / 1,000ft maintained
+              <small>Every airborne pair&rsquo;s closest point of approach is projected 150 s ahead from live tracks.</small>
+            </div>
           </div>
         )}
         {conflicts.map((c) => (

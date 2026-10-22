@@ -4,7 +4,16 @@ function timeStr(ts) {
   return new Date(ts).toISOString().slice(11, 19) + 'Z';
 }
 
-export default function AIDecisionFeed({ decisions }) {
+// Decisions that are graded predictions show their category's REAL verified
+// accuracy from the scorecard (predictions locked before the outcome, graded
+// against the observed landing/departure). Nothing here is a made-up score.
+function trackRecord(scorecard, cat) {
+  const b = cat && scorecard?.allTime?.byCat?.[cat];
+  if (!b || !b.n || b.pct == null) return null;
+  return b;
+}
+
+export default function AIDecisionFeed({ decisions, scorecard }) {
   return (
     <div className="panel feed-panel" style={{ flex: '1.4 1 0' }}>
       <div className="panel-head">
@@ -16,24 +25,36 @@ export default function AIDecisionFeed({ decisions }) {
         {decisions.length === 0 && (
           <div className="empty-note">Decision core standing by.<br />Actions log here as the sector is worked.</div>
         )}
-        {decisions.map((d) => (
-          <div key={d.id} className={`feed-item ${d.severity}`}>
-            <div className="feed-top">
-              <span className="feed-type">{d.type}</span>
-              {d.aircraft.slice(0, 2).map((cs) => (
-                <span key={cs} className="mono-sm" style={{ color: 'var(--cyan)' }}>{cs}</span>
-              ))}
-              <span className="feed-time">{timeStr(d.ts)}</span>
+        {decisions.map((d) => {
+          const rec = trackRecord(scorecard, d.cat);
+          return (
+            <div key={d.id} className={`feed-item ${d.severity}`}>
+              <div className="feed-top">
+                <span className="feed-type">{d.type}</span>
+                {d.aircraft.slice(0, 2).map((cs) => (
+                  <span key={cs} className="mono-sm" style={{ color: 'var(--cyan)' }}>{cs}</span>
+                ))}
+                <span className="feed-time">{timeStr(d.ts)}</span>
+              </div>
+              <div className="feed-title">{d.title}</div>
+              <div className="feed-detail">{d.detail}</div>
+              <div className="feed-meta">
+                {rec && (
+                  <>
+                    <div className="conf-bar"><i style={{ width: `${rec.pct}%` }} /></div>
+                    <span
+                      className="conf-lbl"
+                      title={`${rec.label}: ${rec.pct}% of ${rec.n.toLocaleString()} graded predictions were correct (locked before the outcome, checked against the real landing/departure).`}
+                    >
+                      {rec.pct}% VERIFIED · n={rec.n.toLocaleString()}
+                    </span>
+                  </>
+                )}
+                <span className={`feed-status ${d.status}`} style={{ marginLeft: 'auto' }}>◆ {d.status}</span>
+              </div>
             </div>
-            <div className="feed-title">{d.title}</div>
-            <div className="feed-detail">{d.detail}</div>
-            <div className="feed-meta">
-              <div className="conf-bar"><i style={{ width: `${d.confidence}%` }} /></div>
-              <span className="conf-lbl">{d.confidence}% CONF</span>
-              <span className={`feed-status ${d.status}`} style={{ marginLeft: 'auto' }}>◆ {d.status}</span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -1,0 +1,2 @@
+# Offline model trainer (scripts/train_model.py) — pinned for reproducible weekly retrains.
+numpy>=2.2,<3

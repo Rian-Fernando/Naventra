@@ -21,7 +21,7 @@
 
   --text: #d9e6ec;
   --text-dim: #8fa6b1;
-  --muted: #52646e;
+  --muted: #71858f; /* ≥4.5:1 on every panel surface (WCAG AA) */
 
   --font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
   --font-mono: 'IBM Plex Mono', 'SF Mono', Menlo, monospace;
@@ -106,6 +106,20 @@ body {
    later `.panel { min-height: 0 }` on specificity.) */
 .panel.feed-panel { min-height: 150px; }
 .panel.score-panel, .panel.wx-panel, .panel.conflict-panel { flex-shrink: 0; }
+/* Separation Monitor keeps one height whether or not conflicts are active, so the
+   Weather Outlook / AI feed / METAR below it don't jump each time a conflict
+   appears or clears (that was a recurring layout shift). Cards scroll inside.
+   A user-resized or collapsed panel keeps its own size. */
+.rpanel:not(.collapsed):not(.sized) > .panel.conflict-panel { height: 184px; }
+/* The two LIST panels (flight strips, AI feed) get a bounded default height and
+   scroll inside, instead of growing with every arrival/decision. Content-height
+   lists had grown to ~2,800px at a busy JFK, burying Runway Allocation / Tower Ops
+   (and pushing METAR/ATIS ever lower) and shifting the layout on every update.
+   The column still scrolls as a whole, an inner list hands the wheel back to the
+   column at its ends, and dragging the grip (.sized) still overrides this. */
+.rpanel[data-tour="strips"]:not(.collapsed):not(.sized) > .panel { height: clamp(300px, 56vh, 620px); }
+.rpanel[data-tour="feed"]:not(.collapsed):not(.sized) > .panel { height: clamp(240px, 42vh, 520px); }
+.all-clear small { display: block; margin-top: 4px; font-size: 10px; line-height: 1.45; color: var(--muted); letter-spacing: 0; }
 
 /* --------------------------------------------------- resizable panels ---- */
 /* Each panel is wrapped in .rpanel so it can be resized (bottom grip) and
@@ -370,13 +384,15 @@ body {
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.12em;
-  cursor: pointer;
+  cursor: default;
   transition: all 0.2s;
 }
 
-.livebtn.sim { border-color: rgba(255, 180, 84, 0.5); background: rgba(255, 180, 84, 0.08); color: var(--amber); }
+.livebtn.down { border-color: rgba(255, 180, 84, 0.5); background: rgba(255, 180, 84, 0.08); color: var(--amber); }
+.livebtn.down .dot { animation: none; background: var(--amber); }
 .livebtn.connecting { border-color: var(--line-bright); color: var(--text-dim); }
-.livebtn:hover { filter: brightness(1.25); }
+/* Still live, but the last update is >20 s old — make the staleness visible. */
+.livebtn.lagging { border-color: rgba(255, 180, 84, 0.4); color: var(--amber); }
 
 .dot {
   width: 7px;
@@ -579,7 +595,7 @@ body {
   padding: 1px 0;
   text-align: left;
 }
-.legend-row.toggle { cursor: pointer; }
+.legend-row.toggle { cursor: pointer; min-height: 24px; } /* WCAG 2.2 target size */
 .legend-row.toggle:hover { color: var(--text); }
 .legend-row.off { color: var(--muted); text-decoration: line-through; }
 
@@ -1470,3 +1486,18 @@ body {
   .guide h1 { font-size: 26px; }
   .guide-map { grid-template-columns: 1fr; grid-template-rows: repeat(5, auto); }
 }
+
+/* Honest empty / interrupted state over the scope (never simulated traffic). */
+.scope-state {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 6;
+  max-width: 340px; padding: 14px 18px; border-radius: 8px; text-align: center;
+  display: flex; flex-direction: column; gap: 6px; pointer-events: none;
+  background: rgba(7, 12, 17, 0.86); border: 1px solid var(--line-bright);
+  font-size: 11.5px; line-height: 1.5; color: var(--text-dim);
+  animation: scope-state-in 0.35s ease-out both;
+}
+.scope-state b { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; color: var(--text); font-weight: 600; text-transform: uppercase; }
+.scope-state.down { border-color: rgba(255, 180, 84, 0.45); }
+.scope-state.down b { color: var(--amber); }
+@keyframes scope-state-in { from { opacity: 0; transform: translate(-50%, -46%); } to { opacity: 1; transform: translate(-50%, -50%); } }
+@media (prefers-reduced-motion: reduce) { .scope-state { animation: none; } }

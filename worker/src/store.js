@@ -131,6 +131,24 @@ export async function datasetRows(db, icao, limit) {
   }));
 }
 
+// Tracker heartbeat: the outcome of the last cron tick per hub, kept as one
+// small row so /api/health can report data freshness (and a free uptime
+// monitor can alert on a stalled feed instead of it going unnoticed).
+const TICK_KEY = 'tick:last';
+
+export async function loadTickState(db) {
+  const row = await db.prepare('SELECT data_json FROM state WHERE icao=?').bind(TICK_KEY).first();
+  if (!row) return null;
+  try { return JSON.parse(row.data_json); } catch { return null; }
+}
+
+export function saveTickStmt(db, tick) {
+  return db.prepare(
+    `INSERT INTO state (icao, data_json, updated_ts) VALUES (?1,?2,?3)
+     ON CONFLICT(icao) DO UPDATE SET data_json=?2, updated_ts=?3`
+  ).bind(TICK_KEY, JSON.stringify(tick), Date.now());
+}
+
 export function deleteOpenStmt(db, id) {
   return db.prepare('DELETE FROM predictions WHERE id=?').bind(id);
 }
