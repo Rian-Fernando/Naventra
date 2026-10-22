@@ -2,25 +2,59 @@
   "redirects": [
     {
       "source": "/",
-      "has": [{ "type": "host", "value": "naventra-lake\\.vercel\\.app" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "naventra-lake\\.vercel\\.app"
+        }
+      ],
       "destination": "https://naventra.rianfernando.com/",
       "permanent": true
     },
     {
       "source": "/:path*",
-      "has": [{ "type": "host", "value": "naventra-lake\\.vercel\\.app" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "naventra-lake\\.vercel\\.app"
+        }
+      ],
       "destination": "https://naventra.rianfernando.com/:path*",
       "permanent": true
     }
   ],
   "rewrites": [
-    { "source": "/proxy/wx/:path*", "destination": "https://aviationweather.gov/:path*" },
-    { "source": "/proxy/adsblol/:path*", "destination": "https://api.adsb.lol/:path*" },
-    { "source": "/proxy/adsbfi/:path*", "destination": "https://opendata.adsb.fi/:path*" },
-    { "source": "/guide", "destination": "/index.html" },
-    { "source": "/live", "destination": "/index.html" },
-    { "source": "/privacy", "destination": "/index.html" },
-    { "source": "/data", "destination": "/index.html" },
-    { "source": "/about", "destination": "/index.html" }
+    {
+      "source": "/proxy/wx/api/data/:product(metar|taf)",
+      "destination": "https://aviationweather.gov/api/data/:product"
+    },
+    {
+      "source": "/proxy/adsblol/v2/point/:lat(-?\\d{1,2}\\.\\d{1,6})/:lon(-?\\d{1,3}\\.\\d{1,6})/:r(\\d{1,2})",
+      "destination": "https://api.adsb.lol/v2/point/:lat/:lon/:r"
+    },
+    {
+      "source": "/proxy/adsbfi/api/v3/lat/:lat(-?\\d{1,2}\\.\\d{1,6})/lon/:lon(-?\\d{1,3}\\.\\d{1,6})/dist/:r(\\d{1,2})",
+      "destination": "https://opendata.adsb.fi/api/v3/lat/:lat/lon/:lon/dist/:r"
+    },
+    {
+      "source": "/guide",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/live",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/data",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/about",
+      "destination": "/index.html"
+    }
   ]
 }

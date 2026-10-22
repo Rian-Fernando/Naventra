@@ -26,8 +26,12 @@ const json = (obj, status = 200, maxAge = 30) =>
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil((async () => {
+      // Rotate which hub asks first each minute, so no single hub always takes
+      // the hit when a source has just started rate-limiting.
+      const minute = Math.floor(Date.now() / 60000);
+      const order = TRACKED.map((_, i) => TRACKED[(i + minute) % TRACKED.length]);
       const results = await Promise.all(
-        TRACKED.map((icao) =>
+        order.map((icao) =>
           tickAirport(env, icao).catch((e) => ({ icao, error: String(e && e.message || e) }))
         )
       );
@@ -41,7 +45,7 @@ export default {
           const was = prev.hubs?.[r.icao] || {};
           hubs[r.icao] = r.error
             ? { ok: false, error: r.error.slice(0, 200), lastOkTs: was.lastOkTs || null, tracked: was.tracked ?? null }
-            : { ok: true, lastOkTs: now, tracked: r.tracked, graded: r.graded, locked: r.locked };
+            : { ok: true, lastOkTs: now, tracked: r.tracked, graded: r.graded, locked: r.locked, source: r.source };
         }
         await saveTickStmt(env.DB, { ts: now, hubs }).run();
       } catch (e) { console.error('heartbeat failed', e); }

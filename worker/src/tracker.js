@@ -36,23 +36,36 @@ function normalize(raw, now) {
 }
 
 // Free, keyless ADS-B aggregators returning readsb JSON ({ ac: [...] }). Their
-// terms, as checked 2026-09 — keep this list honest if they change again:
+// terms, as checked 2026-10 — keep this list honest if they change again:
+//  - adsb.lol : no key today (feeder keys planned), dynamic load-based limits,
+//               data licensed ODbL 1.0. Serves Cloudflare Workers most minutes.
 //  - adsb.fi  : public endpoints 1 request/second, personal non-commercial use,
 //               must cite adsb.fi with a link. Point query is /api/v3/lat/…/dist/….
-//  - adsb.lol : no key today (feeder keys planned), dynamic load-based limits,
-//               data licensed ODbL 1.0.
+//               It returns 403 to Cloudflare Workers (a deliberate block), so the
+//               worker only re-probes it every few hours — the browser console
+//               still uses it through the site's own relay.
 // airplanes.live was removed: it closed its public API to non-feeders (Aug 2026).
-// We identify ourselves, keep requests to one host ≥1.1s apart even across the
-// three hubs in a tick, and honour 429/Retry-After by cooling a host down rather
-// than retrying it every minute. If every source fails, the tick is skipped (no
-// bad data written) and the log names each source's status.
+// adsb.lol rate-limits per IP, and Cloudflare's shared egress IPs are usually
+// saturated there by other apps (Oct 2026: data in only 27 of 73 hours). So the
+// tracker reaches adsb.lol through the site's own relay — the same path every
+// visitor's browser uses — at the same rate and with the same identifying UA,
+// falling back to a direct call. adsb.fi is NOT relayed: its 403 is a deliberate
+// block on Workers, which we respect rather than route around.
+// Etiquette: identify ourselves, keep our adsb.lol requests ≥1.1s apart even
+// across the three hubs in a tick, honour Retry-After, back off on repeated
+// 429s. If every source fails the tick is skipped (no bad data written) and the
+// log names each source's status.
 const UA = 'Naventra/1.0 (+https://naventra.rianfernando.com; non-commercial portfolio)';
+const RELAY = 'https://naventra.rianfernando.com/proxy/adsblol';
 const ADSB_SOURCES = [
-  { host: 'opendata.adsb.fi', url: (lat, lon, r) => `https://opendata.adsb.fi/api/v3/lat/${lat}/lon/${lon}/dist/${r}` },
-  { host: 'api.adsb.lol', url: (lat, lon, r) => `https://api.adsb.lol/v2/point/${lat}/${lon}/${r}` },
+  { key: 'relay→adsb.lol', upstream: 'adsb.lol', url: (lat, lon, r) => `${RELAY}/v2/point/${lat}/${lon}/${r}` },
+  { key: 'api.adsb.lol', upstream: 'adsb.lol', url: (lat, lon, r) => `https://api.adsb.lol/v2/point/${lat}/${lon}/${r}` },
+  { key: 'opendata.adsb.fi', upstream: 'adsb.fi', url: (lat, lon, r) => `https://opendata.adsb.fi/api/v3/lat/${lat}/lon/${lon}/dist/${r}` },
 ];
-const nextSlot = new Map();  // host -> earliest ms the next request may start
-const coolUntil = new Map(); // host -> ms until which we leave it alone (after a 429)
+const BLOCKED_REPROBE_MS = 6 * 3600 * 1000; // after a 403, try again in 6 h
+const nextSlot = new Map();  // upstream -> earliest ms our next request may start
+const coolUntil = new Map(); // source key -> ms until which we leave it alone
+const strikes = new Map();   // source key -> consecutive 429s (drives the backoff)
 
 // Reserve the next request slot for a host synchronously, so the three hubs'
 // concurrent fetches queue ≥gapMs apart instead of bursting.
@@ -63,25 +76,50 @@ async function pace(host, gapMs = 1100) {
   if (at > now) await new Promise((r) => setTimeout(r, at - now));
 }
 
+// How long to leave a source alone after a 429: the server's Retry-After when
+// it sends one, else 20s doubling per consecutive 429 (20s, 40s, 80s, max 2 min
+// — adsb.lol's limit is load-based and recovers quickly).
+export function rateLimitCooldownMs(retryAfterHeader, consecutive429s) {
+  const ra = Number(retryAfterHeader);
+  if (ra > 0) return Math.min(ra, 600) * 1000;
+  return Math.min(20000 * 2 ** Math.max(0, consecutive429s - 1), 120000);
+}
+
 async function fetchTraffic(airport) {
   const lat = airport.lat.toFixed(4), lon = airport.lon.toFixed(4);
   const errs = [];
   for (const src of ADSB_SOURCES) {
-    if ((coolUntil.get(src.host) || 0) > Date.now()) { errs.push(`${src.host} cooling`); continue; }
+    const until = coolUntil.get(src.key) || 0;
+    if (until > Date.now()) { errs.push(`${src.key} backing off ${Math.round((until - Date.now()) / 1000)}s`); continue; }
     try {
-      await pace(src.host);
+      await pace(src.upstream);
+      // Re-check after waiting our turn: a hub queued behind a request that just
+      // got 429 must not send its own request into the same limit.
+      if ((coolUntil.get(src.key) || 0) > Date.now()) { errs.push(`${src.key} backing off`); continue; }
       const res = await fetch(src.url(lat, lon, RADIUS_NM), { headers: { 'User-Agent': UA, Accept: 'application/json' } });
       if (res.status === 429) {
-        const ra = Number(res.headers.get('Retry-After'));
-        coolUntil.set(src.host, Date.now() + (ra > 0 ? ra * 1000 : 5 * 60000));
-        errs.push(`${src.host} 429`);
+        const n = (strikes.get(src.key) || 0) + 1;
+        strikes.set(src.key, n);
+        const ra = res.headers.get('Retry-After');
+        coolUntil.set(src.key, Date.now() + rateLimitCooldownMs(ra, n));
+        const why = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 140);
+        errs.push(`${src.key} 429${ra ? ` retry-after=${ra}` : ''} (#${n}) ${why}`.trim());
         continue;
       }
-      if (!res.ok) { errs.push(`${src.host} ${res.status}`); continue; }
+      if (res.status === 403) {
+        // A deliberate block (adsb.fi blocks Workers) — respect it, re-probe later.
+        coolUntil.set(src.key, Date.now() + BLOCKED_REPROBE_MS);
+        errs.push(`${src.key} 403 blocked`);
+        continue;
+      }
+      if (!res.ok) { errs.push(`${src.key} ${res.status}`); continue; }
       const data = await res.json();
+      strikes.set(src.key, 0);
       const now = Date.now();
-      return (data.ac || data.aircraft || []).map((a) => normalize(a, now)).filter(Boolean);
-    } catch (e) { errs.push(`${src.host} ${e.message}`); }
+      const list = (data.ac || data.aircraft || []).map((a) => normalize(a, now)).filter(Boolean);
+      list.source = src.key;
+      return list;
+    } catch (e) { errs.push(`${src.key} ${e.message}`); }
   }
   throw new Error(`adsb: ${errs.join('; ')}`);
 }
@@ -319,5 +357,5 @@ export async function tickAirport(env, icao) {
   if (cfgToSave) stmts.push(saveConfigStmt(env.DB, icao, cfgToSave));
 
   if (stmts.length) await env.DB.batch(stmts);
-  return { icao, graded, locked, samples: samples.length, tracked: annotated.length };
+  return { icao, graded, locked, samples: samples.length, tracked: annotated.length, source: tracks.source || null };
 }

@@ -86,6 +86,7 @@ await check('worker ADS-B sources exclude airplanes.live; adsb.fi on v3', () => 
 await check('worker identifies itself and honours 429 Retry-After', () => {
   assert.match(tracker, /'User-Agent': UA/);
   assert.match(tracker, /Retry-After/);
+  assert.match(tracker, /res.status === 403/, '403 (deliberate block) must not be retried every minute');
 });
 await check('worker paces each ADS-B host ≥1s apart (adsb.fi allows 1 req/s)', () => {
   const m = tracker.match(/async function pace\(host, gapMs = (\d+)\)/);

@@ -3,18 +3,18 @@
   publish = "dist"
 
 [[redirects]]
-  from = "/proxy/wx/*"
-  to = "https://aviationweather.gov/:splat"
+  from = "/proxy/wx/api/data/:product"
+  to = "https://aviationweather.gov/api/data/:product"
   status = 200
 
 [[redirects]]
-  from = "/proxy/adsblol/*"
-  to = "https://api.adsb.lol/:splat"
+  from = "/proxy/adsblol/v2/point/:lat/:lon/:r"
+  to = "https://api.adsb.lol/v2/point/:lat/:lon/:r"
   status = 200
 
 [[redirects]]
-  from = "/proxy/adsbfi/*"
-  to = "https://opendata.adsb.fi/:splat"
+  from = "/proxy/adsbfi/api/v3/lat/:lat/lon/:lon/dist/:r"
+  to = "https://opendata.adsb.fi/api/v3/lat/:lat/lon/:lon/dist/:r"
   status = 200
 
 [[redirects]]
