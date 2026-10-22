@@ -5,13 +5,14 @@
 //    learned per airport. Blended into the geometric runway score, they encode
 //    the facility's habits (e.g. "traffic from the north-east usually gets
 //    22L") that pure geometry can't see from 16nm out.
-//  - ETA bias: an exponential moving average of signed touchdown-time error,
-//    subtracted from future ETA locks (systematic under/over-estimation of
-//    approach time is airport-specific).
+//  - ETA bias: a robust moving average of signed touchdown-time error (each
+//    error clipped to ±120 s first), added to future ETA locks — systematic
+//    under/over-estimation of approach time is airport-specific.
 //
 // Everything is stored locally (localStorage) — no external model, no API.
 
 import { octantOf } from './octant.js';
+import { updateEtaBias, etaBiasFrom } from './etaModel.js';
 export { octantOf };
 
 const KEY = 'nv-learning-v1';
@@ -54,17 +55,15 @@ export function recordLanding(icao, oct, end) {
   save();
 }
 
+// Same robust online bias as the 24/7 tracker (clipped errors, slow average).
 export function recordEtaError(icao, errSec) {
-  const e = apStats(icao).eta;
-  e.ema = e.n === 0 ? errSec : e.ema * 0.75 + errSec * 0.25;
-  e.n++;
+  updateEtaBias(apStats(icao).eta, errSec);
   save();
 }
 
 // Correction (seconds) to add to raw ETA estimates; engages after 3 samples.
 export function etaBiasSec(icao) {
-  const e = apStats(icao).eta;
-  return e.n >= 3 ? Math.max(-240, Math.min(240, e.ema)) : 0;
+  return etaBiasFrom(apStats(icao).eta);
 }
 
 export function learnedLandings(icao) {

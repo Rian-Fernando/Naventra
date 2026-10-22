@@ -6,6 +6,50 @@ All notable changes to Naventra are documented here. The format is based on
 
 ## [Unreleased]
 
+### Departure runways — read off traffic, chosen by results
+- Departures were dealt round-robin across every runway arrivals weren't using (JFK 26%,
+  LAX 38% correct). Three predictors now name a runway for every taxiing flight — the
+  departure flow actually in use, the nearest strip, and a learned per-spot habit — and
+  each airport uses whichever has the best recent record (`src/engine/departures.js`).
+  Replaying 18,880 real graded departures with an honest taxi lag: JFK ~81%, Heathrow ~89%.
+- Runway Allocation shows only runways traffic is using: unused runways go **IDLE** instead
+  of being counted as departure runways (JFK south-west flow showed three), and the badge
+  says whether the configuration came from live traffic or the wind.
+- Ground traffic at other airports in range (Newark, Teterboro, Long Beach…) no longer gets
+  a runway or a departure prediction, and a flight we just saw land isn't mistaken for a
+  departure. Departure records refresh at most every 2.5 min; long hold-short queues are no
+  longer dropped after 10 minutes.
+
+### Seasons — the model keeps up as they change
+- The weekly retrain walks the **whole** dataset (it had silently used only the newest
+  20,000 rows), weights recent rows more with a half-life validated per airport, and only
+  adopts a model that wins on the most recent 21 days.
+- The ETA model must beat the ETA that is actually live (not the raw estimate) and now also
+  learns from landings whose runway couldn't be classified.
+- Day-of-year inputs are wired through training and serving but stay off until the data
+  spans ~a year. The report tracks every month — accuracy, ETA bias, IFR share, wind, the
+  runway used most — and flags shifts between the last two 30-day windows.
+- The tracker's learned priors forget gradually (counts halve past a cap), and it reloads
+  `model.json` from GitHub hourly, so a retrain goes live without a redeploy.
+
+### Alerts & monitoring (free)
+- Email alerts through Resend when live data stalls for 2 h, when it recovers, and when the
+  weekly retrain stops — plus a one-time confirmation. State-change only, idempotent, and
+  off until `RESEND_API_KEY` + `ALERT_TO` are set (see `worker/README.md`).
+- An hourly GitHub Actions watchdog checks `/api/health` from outside and fails (GitHub
+  emails the owner) if the worker is unreachable or its cron stops.
+- GitHub had silently stopped running the weekly retrain and CodeQL schedules after 7 Sep;
+  both re-registered. Optional `GITHUB_DISPATCH_TOKEN` lets a stale model re-run the
+  retrain itself. `/api/health` now reports each hub's observed configuration and the
+  model in use; `/api/dataset.jsonl` pages through the full history (`X-Next-Before`).
+
+### Phones
+- On phones the console opens on the radar (it was below three panels, ~1,100 px down),
+  followed by the AI scorecard and decision feed. The radar keeps its height (a flex rule
+  had collapsed it to 380 px), its controls become one swipeable toolbar and the legend a
+  single row, and the header lost a row. Lighthouse mobile on /live: performance 37 → 80,
+  layout shift 0.62 → 0.005.
+
 ### Live data only — nothing invented
 - **Removed the simulation fallback.** The console no longer switches to synthetic traffic
   when the ADS-B feeds fail (or via a SIM button). It retries with backoff, shows

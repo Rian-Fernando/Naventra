@@ -35,8 +35,11 @@ Every row is validated before training (`scripts/train_model.py::validate`, cove
 - impossible altitude (bad barometric reading) or below-ground AGL artifacts,
 - groundspeed outside a plausible approach range.
 
-Of ~13,600 collected rows, ~8,100 are verified-clean labeled arrivals used for training.
+The weekly report (`docs/model-report.md`) lists how many rows each check rejected.
 Labels are internally consistent (`runway_ok` always agrees with actual-vs-predicted).
+The ETA model has its own validator (`validate_eta`): it needs a usable touchdown time but
+not a classified runway, so landings whose runway couldn't be told from the track still
+teach it.
 
 ## 3. Is one week enough? Do we wait a year for four seasons?
 
@@ -56,7 +59,9 @@ The reasoning:
 
 3. **The weekly auto-retrain accumulates all four seasons on its own.** We do not "wait
    then train once" — `.github/workflows/train.yml` retrains every Monday on the full,
-   growing dataset. Coverage improves continuously.
+   growing dataset, walking every page of `/api/dataset.jsonl`. (Until October 2026 it
+   silently trained on only the newest 20,000 rows — the API's per-request cap — so older
+   seasons fell out of the window. Fixed; see §5.)
 
 4. **The adopt-gate makes seasonality self-correcting.** A model is only flagged for use
    at an airport where it beats the engine on a **held-out time-split**. If a new season
@@ -79,24 +84,74 @@ regimes (a few months). The weekly report is the readiness signal.
 
 Relevant free sources exist, but none match this system's schema, so none is a shortcut:
 
-- **OpenSky Network** — years of free historical ADS-B. But it is raw positions, not our
-  lock-time feature vectors and not the engine's baseline. Using it means re-deriving
-  runway labels and re-running our engine over history — a real backfill project, worth
-  doing later to accelerate seasonal coverage, not a drop-in dataset.
+- **OpenSky Network** — years of historical ADS-B. But it is raw positions, not our
+  lock-time feature vectors and not the engine's baseline, and its terms require a written
+  license for use in a live product or automated system. Not used.
 - **METAR archives** (NOAA / Iowa Mesonet) — decades of free weather, but only the weather
   half; the traffic + runway labels still have to be paired to it.
 - **FAA ASPM / OPSNET** — historical runway usage, but not free/keyless (licensing).
 
 No off-the-shelf dataset contains *(our features + observed-runway + engine prediction)*.
-Our own continuously-collected dataset is the correct, matched source; an OpenSky backfill
-is the option if we later want to pre-seed winter regimes, and is scoped separately.
+Our own continuously-collected dataset is the correct, matched source, and it grows into
+every season by itself.
 
-## 5. Safeguards summary
+## 5. Staying right as the seasons turn
+
+What changes between seasons is the wind regime (so the runway configuration), the
+weather (IFR days, de-icing, convective holds) and traffic — all of which move the ETA
+bias. The pipeline is built so a model trained in one season can't quietly misbehave in
+the next:
+
+- **Every season stays in the data.** Training walks the whole history page by page;
+  nothing ages out.
+- **Recency weighting, chosen honestly.** Older rows count less, with a half-life picked
+  per airport from {no decay, 60, 30, 14 days} on an *inner* validation slice of the
+  training data — never on the test window. A decay must beat "no decay" by ≥0.5 pts to
+  be used, so it only kicks in when the recent regime really differs.
+- **Adoption is judged on the season we're in.** The test window is the most recent 21
+  days, trained only on what came before. A model that learned summer and fails in autumn
+  is switched off by the next weekly run.
+- **The ETA baseline is what's live.** The ETA model must beat the ETA that was actually
+  graded (raw + the tracker's online bias), not the weaker raw estimate, by ≥2 pts.
+- **Day-of-year features wait for a full year.** They exist in the feature vector (and in
+  the JS server) from day one but stay at zero until the data spans 330 days: a seasonal
+  curve fitted to part of a year would be a guess.
+- **Trends are tracked.** The report tables every month per airport — engine runway
+  accuracy, ETA hits, median ETA error, IFR share, wind, the runway used most — and flags
+  any shift between the last 30 days and the 30 before. `model.json` carries the same
+  monthly series (`trends`) for the UI.
+- **Online priors forget.** The tracker's live learned priors (runway-per-approach-octant
+  counts, departure cells) halve once they pass a cap, so they follow the last few hundred
+  movements rather than being outvoted by months of old data.
+- **The live tracker always runs the newest model** — it refreshes `model.json` from GitHub
+  hourly — and emails if the weekly retrain stops (GitHub skips scheduled runs without
+  notice; ours stopped silently after 7 Sep 2026).
+
+## 6. Departure runways — experts chosen by results
+
+Departure runways were the weakest category (JFK 26%, LAX 38%) because the engine dealt
+departures round-robin across every runway arrivals weren't using. Replaying 18,880 graded
+departures (Jul–Oct 2026) with an honest 25-minute taxi lag showed that simply following
+the departure flow the airport is visibly using scores JFK ~81%, Heathrow ~89%, LAX ~43%
+(LAX runs two departure runways at once, so it needs the aircraft's position).
+
+So three predictors now name a runway for every taxiing flight
+(`src/engine/departures.js`): **flow** (the departure runway in use, from recent
+climb-outs), **near** (of those, the strip nearest the aircraft) and **learned** (of
+those, the one flights from that spot on the field have used — counts per 0.3-nm cell).
+Every graded departure scores all three, per airport and per situation, and the live call
+comes from whichever has the best recent record there (with a minimum of 25 graded calls
+and a 2-point margin before it takes over). In the regression simulator the planner
+hands over from flow to the better expert and departure accuracy rises from ~45% to ~90%
+within two simulated hours.
+
+## 7. Safeguards summary
 
 - Self-tests (`scripts/test_train.py`) run before every training in CI.
 - Strict row validation; only clean, sufficient rows train the model.
 - Honest dual evaluation (time-split gates deployment; random-split shows the ceiling).
 - Per-airport adopt-gate; the expert engine is the safe default everywhere else.
-- Weekly retrain; the model improves and the gate re-evaluates as data grows.
+- Weekly retrain on the full history; the gate re-evaluates on the most recent 21 days.
+- The live tracker hot-reloads the model and alerts by email if it goes stale.
 
 The model is **not** in the live control loop yet — by design, pending seasonal coverage.

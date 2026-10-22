@@ -11,6 +11,10 @@ import { wakeCat, wakeSepNm, wakeDepartureSepSec, WAKE_LABEL } from './wake.js';
 
 export const PHASES = ['GROUND', 'DEPARTURE', 'ENROUTE', 'ARRIVAL', 'APPROACH', 'FINAL'];
 
+// Ground traffic farther than this from the field reference is at another
+// airport inside the radar range, not on this one.
+export const ON_FIELD_NM = 3;
+
 // Deterministic small hash → [0,1). Used to spread proposed stands across the
 // apron so they don't jitter between ticks.
 function hash01(str) {
@@ -116,11 +120,50 @@ export function inferActiveArrivals(annotated, airport) {
   return ends; // Map: runwayEnd -> count of aligned arrivals
 }
 
+// Overlay the observed departure flow on an allocation: runways seen launching
+// departures get the DEP role (pointed at the end in use) and runways with
+// neither observed departures nor arrivals go IDLE. Without this, every runway
+// the arrivals didn't use was labelled a departure runway and counted toward
+// the departure rate (JFK in south-west flow showed 22R plus both crossers).
+function applyObservedDepartures(strips, weights, orient) {
+  if (!weights || !weights.size) return strips;
+  for (const s of strips) {
+    const used = s.ends.filter((e) => weights.has(e));
+    const depEnd = used.sort((a, b) => weights.get(b) - weights.get(a))[0] || null;
+    const isArr = s.role.includes('ARR');
+    if (depEnd) {
+      s.depObserved = true;
+      if (isArr && s.observed) {
+        s.role = s.activeEnd === depEnd ? 'DEP+ARR' : 'ARR';
+      } else {
+        orient(s, depEnd);
+        s.role = isArr ? 'DEP+ARR' : 'DEP';
+      }
+    } else {
+      s.role = isArr ? 'ARR' : 'IDLE';
+    }
+  }
+  return strips;
+}
+
 // `observed` (optional Map end->count from inferActiveArrivals) overrides the
 // wind guess with the real, observed configuration when traffic reveals it.
-export function allocateRunways(airport, wx, observed = null) {
+// `observedDep` (optional Map end->weight from departures.js flowWeights) does
+// the same for departures: runways seen launching traffic get the DEP role and
+// runways nobody is using go IDLE.
+export function allocateRunways(airport, wx, observed = null, observedDep = null) {
   const windDir = wx?.windDir ?? null;
   const windKt = wx?.windKt ?? 0;
+  const setEnd = (s, end) => {
+    const endIdx = s.ends.indexOf(end);
+    s.activeEnd = end;
+    s.activeHdg = (s.trueHdg + (endIdx === 1 ? 180 : 0)) % 360;
+    const comps = windDir != null ? windComponents(s.activeHdg, windDir, windKt) : { head: 0, cross: 0 };
+    s.head = comps.head; s.cross = comps.cross;
+    s.hasIls = s.ils.includes(end);
+    s.status = s.cross > 28 ? 'X-WIND' : 'ACTIVE';
+  };
+  const withDepartures = (strips) => applyObservedDepartures(strips, observedDep, setEnd);
 
   // Choose the flow direction from the longest strip: land into the wind.
   const primary = [...airport.runways].sort((a, b) => b.lenFt - a.lenFt)[0];
@@ -147,15 +190,6 @@ export function allocateRunways(airport, wx, observed = null) {
 
   const arrSet = observed && observed.size ? new Set(observed.keys()) : null;
   if (arrSet) {
-    const setEnd = (s, end) => {
-      const endIdx = s.ends.indexOf(end);
-      s.activeEnd = end;
-      s.activeHdg = (s.trueHdg + (endIdx === 1 ? 180 : 0)) % 360;
-      const comps = windDir != null ? windComponents(s.activeHdg, windDir, windKt) : { head: 0, cross: 0 };
-      s.head = comps.head; s.cross = comps.cross;
-      s.hasIls = s.ils.includes(end);
-      s.status = s.cross > 28 ? 'X-WIND' : 'ACTIVE';
-    };
     // Point observed runways at the arrival end actually in use.
     for (const s of strips) {
       const obsEnd = s.ends.find((e) => arrSet.has(e));
@@ -176,7 +210,7 @@ export function allocateRunways(airport, wx, observed = null) {
     if (!strips.some((s) => s.role.includes('DEP'))) {
       strips.sort((a, b) => b.lenFt - a.lenFt)[0].role = 'DEP+ARR'; // ensure a departure runway
     }
-    return strips;
+    return withDepartures(strips);
   }
 
   // Role assignment: longest gets arrivals; alternate the rest so both flows
@@ -186,7 +220,7 @@ export function allocateRunways(airport, wx, observed = null) {
     s.role = strips.length === 1 ? 'DEP+ARR' : strips.length === 2 ? (i === 0 ? 'ARR' : 'DEP') : i === 0 ? 'DEP+ARR' : i % 2 === 1 ? 'ARR' : 'DEP';
     s.status = s.cross > 28 ? 'X-WIND' : 'ACTIVE';
   });
-  return strips;
+  return withDepartures(strips);
 }
 
 // ------------------------------------------------------------ annotation ---
@@ -194,7 +228,10 @@ export function allocateRunways(airport, wx, observed = null) {
 // `priorFn(icao, octant, runwayEnd) -> [0,1]` injects learned runway habits.
 // The browser passes a localStorage-backed fn; the tracker passes a D1-backed
 // one; default is a no-op so the engine stays pure and portable.
-export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = () => 0) {
+// `depPlanner(ac, runways)` (departures.js makeDeparturePlanner) picks the
+// departure runway for flights on the ground; without one, departures are
+// dealt across the DEP runways in turn.
+export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = () => 0, depPlanner = null) {
   const arrRwys = runways.filter((r) => r.role.includes('ARR'));
   const fieldElev = airport.elevFt;
 
@@ -288,7 +325,14 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
   annotated
     .filter((a) => a.phase === 'DEPARTURE' || a.phase === 'GROUND')
     .forEach((a, i) => {
-      a.runway = depRwys.length ? depRwys[i % depRwys.length].activeEnd : null;
+      // On the ground somewhere else in range (Newark, Teterboro, Long Beach…):
+      // none of this airport's runways apply.
+      if (a.phase === 'GROUND' && a.distNm > ON_FIELD_NM) { a.runway = null; return; }
+      // Climbing out: the runway it is visibly departing from, when it can be told.
+      const flown = a.phase === 'DEPARTURE' ? departureEnd(a, airport) : null;
+      const plan = !flown && depPlanner && a.phase === 'GROUND' ? depPlanner(a, runways) : null;
+      if (plan) a.depPlan = plan;
+      a.runway = flown || plan?.end || (depRwys.length ? depRwys[i % depRwys.length].activeEnd : null);
     });
 
   // Wake-on-departure spacing: per runway, order climbing-out departures by
@@ -306,11 +350,14 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
     }
   }
 
-  // Gate allocation for anything committed to landing.
+  // Gate allocation for anything committed to landing (or on this field — not
+  // ground traffic at a neighbouring airport).
   const occupied = new Set(Object.values(gateMap));
+  let all = null; // built once per pass, only if someone needs a stand
   for (const a of annotated) {
-    if ((a.phase === 'APPROACH' || a.phase === 'FINAL' || a.phase === 'GROUND') && !gateMap[a.id]) {
-      const all = airport.terminals.flatMap((t) => t.gates.map((g) => `${t.name}·${g}`));
+    const wantsStand = a.phase === 'APPROACH' || a.phase === 'FINAL' || (a.phase === 'GROUND' && a.distNm <= ON_FIELD_NM);
+    if (wantsStand && !gateMap[a.id]) {
+      all = all || airport.terminals.flatMap((t) => t.gates.map((g) => `${t.name}·${g}`));
       const start = Math.floor(hash01(a.id) * all.length);
       for (let k = 0; k < all.length; k++) {
         const gate = all[(start + k) % all.length];

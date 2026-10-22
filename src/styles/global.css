@@ -598,6 +598,7 @@ body {
 .legend-row.toggle { cursor: pointer; min-height: 24px; } /* WCAG 2.2 target size */
 .legend-row.toggle:hover { color: var(--text); }
 .legend-row.off { color: var(--muted); text-decoration: line-through; }
+.legend-row .lg-short { display: none; }
 
 .rc-airline select {
   background: rgba(7, 12, 17, 0.88);
@@ -955,6 +956,7 @@ body {
 
 .rwy-strip-vis.dep { background: linear-gradient(90deg, var(--cyan-dim), var(--cyan)); }
 .rwy-strip-vis.closed { background: var(--line-bright); }
+.rwy-strip-vis.idle { background: var(--line); opacity: 0.7; }
 
 .rwy-strip-vis::after {
   content: '';
@@ -970,6 +972,7 @@ body {
 .rwy-role.ARR { color: var(--green); }
 .rwy-role.DEP { color: var(--cyan); }
 .rwy-role.BOTH { color: var(--amber); }
+.rwy-role.IDLE { color: var(--muted); }
 
 /* ------------------------------------------------------------ weather --- */
 
@@ -1469,9 +1472,26 @@ body {
     gap: 10px;
   }
   .main .col { min-height: 0; }
-  /* Give the radar a real height when it can't fill a grid cell. */
-  .radar-panel { height: 74vh; min-height: 460px; }
+  /* One scrolling column with the radar first. The side columns dissolve
+     (display: contents) so each panel can be ordered on its own: what the AI
+     sees, then how right it has been, then the detail. */
+  .main .col-side { display: contents; }
+  .main .col-center { order: 1; }
+  .main .rpanel[data-tour="scorecard"] { order: 2; }
+  .main .rpanel[data-tour="feed"] { order: 3; }
+  .main .rpanel[data-tour="strips"] { order: 4; }
+  .main .rpanel[data-tour="runways"] { order: 5; }
+  .main .rpanel[data-tour="separation"] { order: 6; }
+  .main .rpanel[data-tour="ops"] { order: 7; }
+  .main .rpanel[data-tour="forecast"] { order: 8; }
+  .main .rpanel[data-tour="weather"] { order: 9; }
+  /* Give the radar a real height when it can't fill a grid cell (flex: none —
+     with the desktop flex: 1 the height was ignored and it collapsed to its
+     min-height). */
+  .radar-panel { flex: none; height: 74vh; min-height: 460px; }
   .score-panel { max-height: none; }
+  /* The KPI strip drops below the controls so the clock shares their row. */
+  .kpis { order: 10; }
   /* Comms log becomes a normal stacked panel instead of a fixed footer. */
   .shell > .panel:last-child, .comms-wrap { height: 320px; }
 }
@@ -1481,7 +1501,32 @@ body {
   .header { gap: 8px; }
   .nav-link { padding: 6px 8px; }
   .kpi b { font-size: 15px; }
-  .radar-panel { height: 66vh; min-height: 380px; }
+  .radar-panel { height: 68vh; min-height: 420px; }
+  /* Radar chrome for a small touch screen: the mouse hint goes, the controls
+     become one swipeable toolbar beside the search button, the legend a single
+     row of short labels — so the scope itself stays visible. */
+  .radar-panel .panel-head .mono-sm { display: none; }
+  .radar-controls {
+    top: 8px; left: 50px; right: 8px;
+    flex-direction: row; flex-wrap: nowrap; gap: 6px;
+    overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    /* Fade the right edge so it reads as "swipe for more". */
+    -webkit-mask-image: linear-gradient(90deg, #000 82%, transparent);
+    mask-image: linear-gradient(90deg, #000 82%, transparent);
+    padding-right: 28px;
+  }
+  .radar-controls::-webkit-scrollbar { display: none; }
+  .rc-group, .rc-airline { flex: none; }
+  .rc-group button { padding: 7px 10px; }
+  .radar-search { top: 8px; left: 8px; }
+  .radar-alert { top: 48px; max-width: calc(100% - 16px); }
+  .radar-legend {
+    left: 8px; right: 8px; bottom: 8px;
+    flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 0 12px; padding: 2px 8px;
+  }
+  .legend-row .lg-long { display: none; }
+  .legend-row .lg-short { display: inline; }
+  .wx-chip { bottom: 44px; }
   .guide { padding: 20px 16px 60px; }
   .guide h1 { font-size: 26px; }
   .guide-map { grid-template-columns: 1fr; grid-template-rows: repeat(5, auto); }

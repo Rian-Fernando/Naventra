@@ -11,6 +11,7 @@
 
 import { octantOf, recordLanding, recordEtaError, etaBiasSec, learnedLandings } from './learning.js';
 import { CATEGORIES, classifyLandingRunway, gradeItems } from './grading.js';
+import { ON_FIELD_NM } from './atc.js';
 
 export { CATEGORIES };
 const STORE_KEY = 'nv-scorecard-v1';
@@ -38,6 +39,7 @@ export class PredictionTracker {
     this.airport = airport;
     this.open = new Map();     // aircraft id → locked arrival prediction
     this.openDep = new Map();  // aircraft id → locked departure prediction
+    this.landed = new Map();   // aircraft id → ts graded as an arrival (taxiing in ≠ departing)
     this.store = loadStore();  // persisted all-time (live only)
     this.session = emptyStats();
     this.events = [];
@@ -51,27 +53,32 @@ export class PredictionTracker {
 
     // ---- departures: lock while taxiing/rolling, grade on climb-out --------
     if (departureEndFn) {
+      for (const [id, ts] of this.landed) if (now - ts > 30 * 60000) this.landed.delete(id);
       for (const ac of aircraft) {
         const d = this.openDep.get(ac.id);
         if (!d) {
           // Lock the planned departure runway while the flight is still on the
-          // ground (moving — parked stands churn too much noise).
-          if (lockEnabled && ac.phase === 'GROUND' && ac.runway && ac.gs > 5 && ac.gs < 60 && !this.open.has(ac.id)) {
-            this.openDep.set(ac.id, { callsign: ac.callsign, predRunway: ac.runway, lockTs: now, lastSeen: now, live });
+          // ground (moving — parked stands churn too much noise). A flight we
+          // just watched land is taxiing IN, not out.
+          if (lockEnabled && ac.phase === 'GROUND' && ac.runway && ac.distNm <= ON_FIELD_NM && ac.gs > 5 && ac.gs < 60 && !this.open.has(ac.id) && !this.landed.has(ac.id)) {
+            this.openDep.set(ac.id, { callsign: ac.callsign, predRunway: ac.runway, by: ac.depPlan?.by || null, plan: ac.depPlan || null, lockTs: now, lastSeen: now, moved: now, live });
           }
           continue;
         }
         d.lastSeen = now;
+        if (ac.gs >= 3) d.moved = now;
         const actual = departureEndFn(ac, this.airport);
         if (actual) {
           this.openDep.delete(ac.id);
           this.gradeDeparture(d, actual, runways);
-        } else if (ac.phase === 'GROUND' && ac.gs < 3 && now - d.lockTs > 10 * 60000) {
-          this.openDep.delete(ac.id); // never departed (returned to stand)
+        } else if ((ac.phase === 'GROUND' && ac.gs < 3 && now - d.moved > 20 * 60000) || now - d.lockTs > 90 * 60000) {
+          // Parked for 20 min (back at a stand) or never seen climbing out. Queues
+          // at the hold short creep forward well inside 20 minutes.
+          this.openDep.delete(ac.id);
         }
       }
       for (const [id, d] of this.openDep) {
-        if (!seen.has(id) && now - d.lastSeen > 5 * 60000) this.openDep.delete(id);
+        if (!seen.has(id) && now - d.lastSeen > 8 * 60000) this.openDep.delete(id);
       }
     }
 
@@ -141,11 +148,14 @@ export class PredictionTracker {
   gradeDeparture(d, actualEnd, runways) {
     const items = [{
       cat: 'deprwy', predicted: d.predRunway, actual: actualEnd, ok: actualEnd === d.predRunway,
+      ...(d.by ? { by: d.by } : {}),
     }];
     const entry = { ts: Date.now(), callsign: d.callsign, airport: this.airport.iata, live: d.live, items, kind: 'departure' };
     this.bank(items, d.live, entry);
     this.events.push({
       kind: 'verify', callsign: d.callsign, entry, ok: items[0].ok,
+      // The locked plan + outcome, so the caller can score the departure experts.
+      depPlan: d.plan, actual: actualEnd, live: d.live,
       text: `${d.callsign} departed ${actualEnd} — runway prediction ${items[0].ok ? 'verified' : `missed (planned ${d.predRunway})`}.`,
     });
   }
@@ -172,6 +182,7 @@ export class PredictionTracker {
   grade(id, landedTs, arrEndsNow) {
     const o = this.open.get(id);
     this.open.delete(id);
+    this.landed.set(id, Date.now());
     if (!o || !o.sample) return;
 
     const actualRunway = classifyLandingRunway(o.sample, this.airport);

@@ -1,0 +1,66 @@
+name: Tracker watchdog
+
+# Outside check that the always-on Cloudflare tracker itself is alive. The
+# worker emails its own data-feed and model alerts (worker/src/alerts.js), but
+# it cannot report its own death — a crashed deploy, a database over its free
+# limits, a cron that stopped. This job reads /api/health hourly from GitHub's
+# side; a failed run makes GitHub email the repo owner. Read-only, no secrets.
+#
+# It fails only when the worker is unreachable / erroring or its cron has not
+# completed a tick in 20 minutes. A slow live-data feed (HTTP 503 with fresh
+# ticks) is the worker's own alert to send, so that passes here with a warning.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the tracker is ticking
+        shell: python
+        run: |
+          import json, sys, time, urllib.error, urllib.request
+
+          URL = "https://naventra-tracker.rianfernando.workers.dev/api/health"
+          UA = "naventra-watchdog/1.0 (+https://github.com/Rian-Fernando/Naventra)"
+          health, err = None, None
+          for attempt in range(3):
+              try:
+                  req = urllib.request.Request(URL, headers={"User-Agent": UA, "Cache-Control": "no-cache"})
+                  try:
+                      with urllib.request.urlopen(req, timeout=20) as r:
+                          code, body = r.status, r.read()
+                  except urllib.error.HTTPError as e:
+                      code, body = e.code, e.read()   # 503 still carries a full report
+                  if code >= 500 and code != 503:
+                      raise RuntimeError(f"HTTP {code}: {body[:200]!r}")
+                  health = json.loads(body)
+                  break
+              except Exception as e:  # network error, 5xx, or not JSON
+                  err = e
+                  time.sleep(20)
+          if health is None:
+              print(f"::error::Tracker health check failed after 3 tries: {err}")
+              sys.exit(1)
+
+          now_ms = time.time() * 1000
+          last = health.get("lastTickTs")
+          age_min = (now_ms - last) / 60000 if last else None
+          for icao, h in sorted((health.get("hubs") or {}).items()):
+              seen = f"{(now_ms - h['lastOkTs']) / 60000:.0f} min ago" if h.get("lastOkTs") else "never"
+              print(f"{icao}: {'live' if h.get('ok') else 'FAILING'} · last live data {seen} · {h.get('tracked')} aircraft via {h.get('source')}")
+          model = health.get("model") or {}
+          print(f"Model: generated {model.get('generatedAt')} ({model.get('source')}); email alerts configured: {health.get('alerts')}")
+
+          if age_min is None or age_min > 20:
+              print(f"::error::The tracker's cron hasn't completed a tick in {age_min if age_min is None else round(age_min)} minutes — check the worker in the Cloudflare dashboard (Workers → naventra-tracker → Logs).")
+              sys.exit(1)
+          if not health.get("ok"):
+              print(f"::warning::Ticking normally, but live data is stale at {', '.join(health.get('stale') or [])} (the worker emails about this itself).")
+          print(f"OK — last tick {age_min:.1f} min ago.")

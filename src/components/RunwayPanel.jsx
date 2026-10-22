@@ -1,19 +1,26 @@
 import { Route } from 'lucide-react';
 
 export default function RunwayPanel({ runways }) {
+  // Say where the configuration came from: read off live traffic (aircraft on
+  // final / climbing out) or, when nothing is moving, planned from the wind.
+  const fromTraffic = runways.some((r) => r.observed || r.depObserved);
   return (
     <div className="panel">
       <div className="panel-head">
         <Route size={14} color="var(--green)" />
         <span className="panel-title">Runway Allocation</span>
-        <span className="badge green">WIND-OPTIMIZED</span>
+        <span className={`badge ${fromTraffic ? 'cyan' : 'green'}`} title={fromTraffic
+          ? 'Configuration read off live traffic: aircraft on final and departures climbing out'
+          : 'No traffic seen on final or climbing out yet — planned from the wind'}>
+          {fromTraffic ? 'FROM LIVE TRAFFIC' : 'WIND-OPTIMIZED'}
+        </span>
       </div>
       <div className="panel-body">
         {runways.map((r) => (
           <div className="rwy-row" key={r.id}>
             <div className="rwy-id">{r.activeEnd}</div>
             <div className="rwy-bar">
-              <div className={`rwy-strip-vis ${r.status === 'X-WIND' ? 'closed' : r.role === 'DEP' ? 'dep' : ''}`} />
+              <div className={`rwy-strip-vis ${r.role === 'IDLE' ? 'idle' : r.status === 'X-WIND' ? 'closed' : r.role === 'DEP' ? 'dep' : ''}`} />
               <div className="rwy-info">
                 <span><b>{r.lenFt.toLocaleString()}</b>ft</span>
                 <span>HW <b>{r.head >= 0 ? '+' : ''}{r.head}kt</b></span>
@@ -22,7 +29,7 @@ export default function RunwayPanel({ runways }) {
                 {r.status === 'X-WIND' && <span style={{ color: 'var(--amber)' }}>X-WIND ADVISORY</span>}
               </div>
             </div>
-            <div className={`rwy-role ${r.role === 'DEP+ARR' ? 'BOTH' : r.role}`}>{r.role}</div>
+            <div className={`rwy-role ${r.role === 'DEP+ARR' ? 'BOTH' : r.role}`} title={r.role === 'IDLE' ? 'No arrivals or departures seen on this runway right now' : undefined}>{r.role}</div>
           </div>
         ))}
       </div>

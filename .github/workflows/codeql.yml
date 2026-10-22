@@ -6,7 +6,9 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: "0 6 * * 1"
+    # Off the top of the hour; re-saving the schedule also re-registers it after
+    # GitHub silently stopped firing this repo's weekly schedules (Sep 2026).
+    - cron: "41 6 * * 1"
 
 jobs:
   analyze:

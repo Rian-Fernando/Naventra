@@ -64,8 +64,12 @@ that runs the **same** engine 24/7 so the score keeps improving with no browser 
 
 ## What the console does
 
-- **Runway configuration** — head/crosswind for every runway end from the live METAR; selects
-  the active arrival/departure config, flags crosswind advisories.
+- **Runway configuration** — head/crosswind for every runway end from the live METAR, then
+  overridden by what traffic shows: aircraft on final set the arrival runways, climb-outs the
+  departure runways, and runways nobody is using go IDLE. Flags crosswind advisories.
+- **Departure runways** — every taxiing flight gets a planned runway from three competing
+  predictors (the departure flow in use, the nearest strip, a learned per-spot habit); each
+  airport uses whichever has the best recent graded record.
 - **Weather Outlook** — pulls the live **TAF** and projects when the wind will flip the runways,
   plus a transparent disruption-risk estimate per forecast period.
 - **Arrival sequencing** — classifies each track by phase (enroute → arrival → approach → final
@@ -79,7 +83,8 @@ that runs the **same** engine 24/7 so the score keeps improving with no browser 
   frequencies, with airline telephony ("Speedbird", "Cathay", …) and pilot readbacks.
 - **The scope** — a 3D TRACON view (drag to orbit, scroll to zoom, true-altitude stems, history
   trails) with a 2D top-down toggle; deep zoom (2–5 nm) draws real runways, thresholds and a
-  schematic terminal layout.
+  schematic terminal layout. On a phone the console opens on the radar, with a swipeable
+  control bar.
 
 ## Always-on learning & the open dataset
 
@@ -91,9 +96,17 @@ runs fully client-side with per-browser learning.
 Every graded operation is logged as a **labeled training row** — ~25 factors captured at lock
 time (approach geometry, aircraft type + wake category, live wind components, ceiling, flight
 category, time of day, runway config, traffic density, sequence) plus the observed outcome —
-and exported as JSONL from `/api/dataset.jsonl`. That turns the tracker into a growing dataset
-you can train a full ML model on offline (free, keyless) and serve back as pure-JS inference.
-See [`worker/README.md`](worker/README.md) for the schema, deploy steps and a training recipe.
+and exported as JSONL from `/api/dataset.jsonl` (paged through the full history). That turns
+the tracker into a growing dataset you can train a full ML model on offline (free, keyless) and
+serve back as pure-JS inference.
+
+A weekly GitHub Action retrains on **every** row with recency weighting, adopts a model only if
+it beats what's live on the most recent three weeks, and reports month-by-month trends so
+seasonal drift is visible ([`docs/model-report.md`](docs/model-report.md),
+[`docs/model-methodology.md`](docs/model-methodology.md)). The worker reloads the new model from
+GitHub within the hour and emails (free, via Resend) if live data stalls or the retrain stops;
+an hourly GitHub watchdog covers the worker itself. See [`worker/README.md`](worker/README.md)
+for the schema, alerts setup, deploy steps and a training recipe.
 
 ## Data sources (all free, no API keys)
 

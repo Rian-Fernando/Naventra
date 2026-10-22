@@ -1,5 +1,6 @@
 // D1 persistence for the always-on tracker.
 import { CATEGORIES } from '../../src/engine/grading.js';
+import { updateEtaBias, etaBiasFrom } from '../../src/engine/etaModel.js';
 
 export async function loadModel(db, icao) {
   const row = await db.prepare('SELECT * FROM model WHERE icao=?').bind(icao).first();
@@ -23,12 +24,22 @@ export function saveModelStmt(db, m) {
   ).bind(m.icao, JSON.stringify(m.rwy), m.eta.ema, m.eta.n, m.landings, m.samples || 0, Date.now());
 }
 
-// Learned model params for the frontend (so the live console uses global priors).
+// Learned model params for the frontend (so the live console uses global priors),
+// plus each hub's observed departure flow so a fresh console knows which
+// runways are launching traffic without waiting to see a climb-out itself.
 export async function getModels(db) {
   const { results } = await db.prepare('SELECT icao, rwy_json, eta_ema, eta_n, landings FROM model').all();
   const out = {};
   for (const r of results) {
     out[r.icao] = { rwy: JSON.parse(r.rwy_json || '{}'), eta: { ema: r.eta_ema, n: r.eta_n }, landings: r.landings };
+  }
+  const cfgs = (await db.prepare("SELECT icao, data_json FROM state WHERE icao LIKE 'cfg:%'").all()).results;
+  for (const c of cfgs) {
+    const icao = c.icao.slice(4);
+    try {
+      const cfg = JSON.parse(c.data_json);
+      if (out[icao] && Array.isArray(cfg.dep)) out[icao].depFlow = cfg.dep;
+    } catch { /* ignore a bad row */ }
   }
   return out;
 }
@@ -44,18 +55,29 @@ export function priorFromModel(model) {
   };
 }
 
+// Per-octant memory: once a bucket passes this many landings its counts halve,
+// so the prior tracks the last few hundred landings from that direction rather
+// than every landing ever — seasonal configurations and new habits win out
+// instead of being outvoted by months of old data.
+const PRIOR_CAP = 400;
+
 export function recordLandingIntoModel(model, oct, end, etaErrSec) {
   if (end != null) {
-    model.rwy[oct] = model.rwy[oct] || {};
-    model.rwy[oct][end] = (model.rwy[oct][end] || 0) + 1;
+    const b = (model.rwy[oct] = model.rwy[oct] || {});
+    b[end] = (b[end] || 0) + 1;
+    if (Object.values(b).reduce((x, y) => x + y, 0) > PRIOR_CAP) {
+      for (const e of Object.keys(b)) {
+        b[e] = Math.floor(b[e] / 2);
+        if (!b[e]) delete b[e];
+      }
+    }
   }
-  model.eta.ema = model.eta.n === 0 ? etaErrSec : model.eta.ema * 0.75 + etaErrSec * 0.25;
-  model.eta.n += 1;
+  updateEtaBias(model.eta, etaErrSec); // robust online bias — see etaModel.js
   model.landings += 1;
 }
 
 export function etaBiasSec(model) {
-  return model.eta.n >= 3 ? Math.max(-240, Math.min(240, model.eta.ema)) : 0;
+  return etaBiasFrom(model.eta);
 }
 
 export async function loadOpen(db, icao) {
@@ -118,17 +140,23 @@ export async function arrRate1h(db, icao, now) {
   return row?.k || 0;
 }
 
-// Stream the training set as JSONL: one flat object per graded landing.
-export async function datasetRows(db, icao, limit) {
+// Stream the training set as JSONL: one flat object per graded landing, newest
+// first. Pages walk back through the whole history by row id: pass the
+// smallest `id` of one page as `before` for the next (a primary-key range, so a
+// page reads only its own rows). Returns { rows, nextBefore }.
+export async function datasetRows(db, icao, limit, before = null) {
+  const cursor = before && before > 0 ? before : Number.MAX_SAFE_INTEGER;
   const q = icao
-    ? db.prepare('SELECT * FROM samples WHERE icao=? ORDER BY ts DESC LIMIT ?').bind(icao, limit)
-    : db.prepare('SELECT * FROM samples ORDER BY ts DESC LIMIT ?').bind(limit);
+    ? db.prepare('SELECT * FROM samples WHERE icao=? AND id<? ORDER BY id DESC LIMIT ?').bind(icao, cursor, limit)
+    : db.prepare('SELECT * FROM samples WHERE id<? ORDER BY id DESC LIMIT ?').bind(cursor, limit);
   const { results } = await q.all();
-  return results.map((r) => JSON.stringify({
-    icao: r.icao, iata: r.iata, ts: r.ts, callsign: r.callsign,
+  const rows = results.map((r) => JSON.stringify({
+    id: r.id, icao: r.icao, iata: r.iata, ts: r.ts, callsign: r.callsign,
     ...JSON.parse(r.features_json),
     ...JSON.parse(r.outcome_json),
   }));
+  const nextBefore = results.length === limit ? results[results.length - 1].id : null;
+  return { rows, nextBefore };
 }
 
 // Tracker heartbeat: the outcome of the last cron tick per hub, kept as one
@@ -143,10 +171,27 @@ export async function loadTickState(db) {
 }
 
 export function saveTickStmt(db, tick) {
+  return saveStateStmt(db, TICK_KEY, tick);
+}
+
+// Generic small JSON rows in the state table (heartbeat, alert state).
+export const ALERT_KEY = 'alert:state';
+
+export async function loadStates(db, keys) {
+  const marks = keys.map((_, i) => `?${i + 1}`).join(',');
+  const { results } = await db.prepare(`SELECT icao, data_json FROM state WHERE icao IN (${marks})`).bind(...keys).all();
+  const out = {};
+  for (const r of results) {
+    try { out[r.icao] = JSON.parse(r.data_json); } catch { /* ignore a bad row */ }
+  }
+  return out;
+}
+
+export function saveStateStmt(db, key, obj) {
   return db.prepare(
     `INSERT INTO state (icao, data_json, updated_ts) VALUES (?1,?2,?3)
      ON CONFLICT(icao) DO UPDATE SET data_json=?2, updated_ts=?3`
-  ).bind(TICK_KEY, JSON.stringify(tick), Date.now());
+  ).bind(key, JSON.stringify(obj), Date.now());
 }
 
 export function deleteOpenStmt(db, id) {

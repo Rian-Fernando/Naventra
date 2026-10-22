@@ -26,3 +26,12 @@ jobs:
         run: node scripts/test-feedex.mjs
       - name: Data-integrity tests (no synthetic data)
         run: node scripts/test-integrity.mjs
+      - name: Tracker tests (alerts, departure experts, dataset paging)
+        run: node scripts/test-tracker.mjs
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+      - name: Trainer self-tests
+        run: pip install -r scripts/requirements.txt && python3 scripts/test_train.py

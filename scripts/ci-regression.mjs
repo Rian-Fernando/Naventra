@@ -9,13 +9,25 @@ const t0 = Date.now();
 let simMs = 0;
 Date.now = () => t0 + simMs;
 
+// Deterministic simulator: seed Math.random (mulberry32) so every CI run sees
+// the same traffic and a pass/fail can't flip on luck.
+{
+  let a = 0x9e3779b9;
+  Math.random = () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 globalThis.localStorage = {
   _d: {},
   getItem(k) { return this._d[k] || null; },
   setItem(k, v) { this._d[k] = v; },
 };
 
-const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior }, { buildOutlook }, { wakeCat, wakeSepNm, wakeDepartureSepSec }, { computeCapacity }, { etaVec, etaCorrectionSec }, grading] = await Promise.all([
+const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior }, { buildOutlook }, { wakeCat, wakeSepNm, wakeDepartureSepSec }, { computeCapacity }, { etaVec, etaCorrectionSec, updateEtaBias, etaBiasFrom }, grading] = await Promise.all([
   import('../src/lib/sim.js'),
   import('../src/data/airports.js'),
   import('../src/engine/atc.js'),
@@ -28,6 +40,7 @@ const [{ SimEngine }, { AIRPORTS }, atc, { PredictionTracker }, { runwayPrior },
   import('../src/engine/grading.js'),
 ]);
 const { detectSurface } = await import('../src/engine/surface.js');
+const departures = await import('../src/engine/departures.js');
 
 let failures = 0;
 const check = (name, cond, detail = '') => {
@@ -42,24 +55,80 @@ for (const icao of ['KJFK', 'KLAX', 'EGLL', 'YSSY']) {
   const tracker = new PredictionTracker(ap);
   const gateMap = {};
   let graded = 0;
+  let flow = [];
+  let lastRwys = [];
+  const depModel = departures.emptyDepModel();
 
+  // Same pipeline as the console (useAtcSystem): wind plan → observed arrivals
+  // and departure flow → re-allocate → annotate with the departure planner.
   for (let t = 0; t < 1800; t += 1.5) {
     simMs += 1500;
     const tracks = sim.tick(1.5);
     const base = atc.allocateRunways(ap, wx);
     let ann = atc.annotateAircraft(tracks, ap, base, gateMap, runwayPrior);
     const obs = atc.inferActiveArrivals(ann, ap);
-    const rwys = obs.size ? atc.allocateRunways(ap, wx, obs) : base;
-    if (obs.size) ann = atc.annotateAircraft(tracks, ap, rwys, gateMap, runwayPrior);
+    flow = departures.observeDepartures(flow, ann, ap, Date.now()).flow;
+    const depW = departures.flowWeights(flow, Date.now());
+    const rwys = obs.size || depW.size ? atc.allocateRunways(ap, wx, obs.size ? obs : null, depW) : base;
+    ann = atc.annotateAircraft(tracks, ap, rwys, gateMap, runwayPrior, departures.makeDeparturePlanner(ap, depW, depModel));
+    lastRwys = rwys;
     for (const ev of tracker.update(ann, rwys, true, true, atc.departureEnd)) {
       if (ev.kind === 'verify') graded++;
+      if (ev.depPlan) departures.learnDeparture(depModel, ev.depPlan, ev.actual);
     }
   }
 
   const st = tracker.getState();
   check(`${icao} grades operations`, graded >= 8, `graded=${graded}`);
+  const dep = st.allTime.byCat.deprwy;
+  // The simulator picks each departure's runway at random among the DEP
+  // runways, so this is a does-it-work floor, not an accuracy benchmark (the
+  // learning test below is the one that measures improvement).
+  check(`${icao} departure runways graded with the planner`, dep.n >= 3 && (dep.pct ?? 0) >= 20, `n=${dep.n} ${dep.pct}%`);
+  check(`${icao} observed flow keeps a departure runway`, lastRwys.some((r) => r.role.includes('DEP')), lastRwys.map((r) => `${r.activeEnd}:${r.role}`).join(' '));
   check(`${icao} accuracy sane`, (st.allTime.pct ?? 0) >= 55, `overall=${st.allTime.pct}%`);
   check(`${icao} state shape`, !!st.allTime.byCat && typeof st.openCount === 'number');
+}
+
+// Departure experts learn: in the simulator every departure spawns ON the runway
+// it will use (chosen at random among the DEP runways), so following the flow is
+// a coin toss while "nearest strip" is right almost every time. Over two
+// sim-hours the planner must notice that and hand the call to the better expert.
+{
+  const ap = AIRPORTS.KJFK;
+  const wx = { windDir: 250, windKt: 10 };
+  const sim = new SimEngine(ap, atc.allocateRunways(ap, wx));
+  const tracker = new PredictionTracker(ap);
+  const depModel = departures.emptyDepModel();
+  const gateMap = {};
+  let flow = [];
+  const byHalf = [[0, 0], [0, 0]];
+  const usedBy = new Map();
+  for (let t = 0; t < 7200; t += 2) {
+    simMs += 2000;
+    const tracks = sim.tick(2);
+    const base = atc.allocateRunways(ap, wx);
+    let ann = atc.annotateAircraft(tracks, ap, base, gateMap, runwayPrior);
+    const obs = atc.inferActiveArrivals(ann, ap);
+    flow = departures.observeDepartures(flow, ann, ap, Date.now()).flow;
+    const depW = departures.flowWeights(flow, Date.now());
+    const rwys = obs.size || depW.size ? atc.allocateRunways(ap, wx, obs.size ? obs : null, depW) : base;
+    ann = atc.annotateAircraft(tracks, ap, rwys, gateMap, runwayPrior, departures.makeDeparturePlanner(ap, depW, depModel));
+    for (const ev of tracker.update(ann, rwys, true, true, atc.departureEnd)) {
+      if (!ev.depPlan) continue;
+      const h = t < 3600 ? 0 : 1;
+      byHalf[h][0]++; byHalf[h][1] += ev.ok ? 1 : 0;
+      if (h === 1) usedBy.set(ev.depPlan.by, (usedBy.get(ev.depPlan.by) || 0) + 1);
+      departures.learnDeparture(depModel, ev.depPlan, ev.actual);
+    }
+  }
+  const pct = ([n, ok]) => (n ? Math.round((100 * ok) / n) : 0);
+  const ctx = Object.entries(depModel.experts).sort((a, b) => (b[1].near?.n || 0) - (a[1].near?.n || 0))[0];
+  const nearAcc = ctx ? ctx[1].near.ok / ctx[1].near.n : 0, flowAcc = ctx?.[1].flow ? ctx[1].flow.ok / ctx[1].flow.n : 0;
+  check('departure experts: near scores above flow in the simulator', nearAcc > flowAcc + 0.1, `near ${Math.round(nearAcc * 100)}% vs flow ${Math.round(flowAcc * 100)}%`);
+  const handed = (usedBy.get('near') || 0) + (usedBy.get('learned') || 0);
+  check('departure experts: the planner hands over from flow to a better expert', handed > 2 * (usedBy.get('flow') || 0), JSON.stringify(Object.fromEntries(usedBy)));
+  check('departure experts: accuracy improves as it learns', pct(byHalf[1]) > pct(byHalf[0]) + 10, `hour 1 ${pct(byHalf[0])}% (n=${byHalf[0][0]}) → hour 2 ${pct(byHalf[1])}% (n=${byHalf[1][0]})`);
 }
 
 // Airport data integrity (generated file).
@@ -123,14 +192,38 @@ check('dep wake: floored at 60s occupancy', wakeDepartureSepSec('M', 'M') === 60
 
 // ETA model serving: feature vector matches training length, correction is
 // clamped, and it only fires for an adopted airport.
-check('etaVec length = 11', etaVec({}).length === 11);
+check('etaVec length = 13 (season inputs after bias)', etaVec({}).length === 13);
 check('etaVec all finite', etaVec({ dist_nm: 10, gs_kt: 140, head_kt: 8, wake: 'H', flt_cat: 'IFR', hour_local: 14 }).every(Number.isFinite));
+{
+  // Golden vector shared with scripts/test_train.py — JS serving and Python
+  // training must build the identical ETA feature vector.
+  const golden = [0.625, 0.7, 0.4, 0.5, 0.4, 0.5, 1, 1, -0.5, -0.866025, 1, 0.988854, -0.14889];
+  const v = etaVec({ dist_nm: 10, gs_kt: 140, head_kt: 8, arr_rate_1h: 30, inbound_count: 20, sector_count: 100, wake: 'H', flt_cat: 'IFR', hour_local: 14, doy: 100 });
+  check('etaVec matches the Python trainer (golden vector)', v.every((x, i) => Math.abs(x - golden[i]) < 1e-5), JSON.stringify(v.map((x) => +x.toFixed(6))));
+}
 {
   const synth = { airports: { TEST: { eta: { adopt: true, W: new Array(11).fill(1) } } } };
   const corr = etaCorrectionSec(synth, 'TEST', { dist_nm: 16, gs_kt: 200, head_kt: 20 });
   check('eta correction is a clamped number', typeof corr === 'number' && corr >= -600 && corr <= 900, `${corr}`);
   check('eta correction null when no model', etaCorrectionSec(synth, 'NOPE', {}) === null);
   check('eta correction null when not adopted', etaCorrectionSec({ airports: { X: { eta: { adopt: false, W: [1] } } } }, 'X', {}) === null);
+}
+
+// Online ETA bias: robust to holds (errors clipped), matches the Python replay
+// (golden sequence shared with scripts/test_train.py), and re-seeds a value
+// left behind by the old unclipped estimator.
+{
+  const eta = { ema: 0, n: 0 };
+  const out = [];
+  for (const e of [300, -50, 60, 1500, 20, -400, 90, -10]) { out.push(+etaBiasFrom(eta).toFixed(4)); updateEtaBias(eta, e); }
+  const golden = [0, 0, 0, 98.7, 100.83, 92.747, 71.4723, 73.3251];
+  check('online ETA bias matches the trainer replay (golden)', out.every((x, i) => Math.abs(x - golden[i]) < 1e-3), JSON.stringify(out));
+  const old = { ema: 238, n: 400 };
+  updateEtaBias(old, 45);
+  check('online ETA bias re-seeds a pinned old value', old.ema === 45 && etaBiasFrom(old) === 45, `${old.ema}`);
+  const holds = { ema: 0, n: 0 };
+  for (let i = 0; i < 50; i++) updateEtaBias(holds, i % 5 === 0 ? 1500 : 40);
+  check('a 30-min hold every 5th landing moves the bias < 2 min', etaBiasFrom(holds) < 120 && etaBiasFrom(holds) > 40, `${etaBiasFrom(holds).toFixed(0)}s`);
 }
 
 // ETA outlier void: a landing >30 min off the raw estimate is not graded.

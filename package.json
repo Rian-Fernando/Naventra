@@ -11,7 +11,8 @@
     "indexnow": "node scripts/indexnow.mjs",
     "test:feedex": "node scripts/test-feedex.mjs",
     "test:integrity": "node scripts/test-integrity.mjs",
-    "test": "node scripts/ci-regression.mjs && node scripts/test-feedex.mjs && node scripts/test-integrity.mjs"
+    "test": "node scripts/ci-regression.mjs && node scripts/test-feedex.mjs && node scripts/test-integrity.mjs && node scripts/test-tracker.mjs",
+    "test:tracker": "node scripts/test-tracker.mjs"
   },
   "dependencies": {
     "@fontsource/barlow-condensed": "^5.3.0",

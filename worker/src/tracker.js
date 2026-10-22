@@ -3,11 +3,12 @@
 // engine + grading code with the browser (../../src/engine/*).
 
 import { AIRPORTS } from '../../src/data/airports.js';
-import { allocateRunways, annotateAircraft, inferActiveArrivals, departureEnd } from '../../src/engine/atc.js';
+import { allocateRunways, annotateAircraft, inferActiveArrivals, departureEnd, ON_FIELD_NM } from '../../src/engine/atc.js';
 import { octantOf } from '../../src/engine/octant.js';
 import { classifyLandingRunway, gradeItems } from '../../src/engine/grading.js';
 import { etaCorrectionSec, ETA_OUTLIER_MS } from '../../src/engine/etaModel.js';
-import ETA_MODEL from '../../public/model.json';
+import { observeDepartures, flowWeights, makeDeparturePlanner, learnDeparture, emptyDepModel } from '../../src/engine/departures.js';
+import { trainedModel } from './modelSource.js';
 import {
   loadModel, priorFromModel, recordLandingIntoModel, etaBiasSec,
   loadOpen, upsertOpenStmt, deleteOpenStmt, recordLandingStmt, bumpStatsStmt, saveModelStmt,
@@ -55,7 +56,7 @@ function normalize(raw, now) {
 // across the three hubs in a tick, honour Retry-After, back off on repeated
 // 429s. If every source fails the tick is skipped (no bad data written) and the
 // log names each source's status.
-const UA = 'Naventra/1.0 (+https://naventra.rianfernando.com; non-commercial portfolio)';
+export const UA = 'Naventra/1.0 (+https://naventra.rianfernando.com; non-commercial portfolio)';
 const RELAY = 'https://naventra.rianfernando.com/proxy/adsblol';
 const ADSB_SOURCES = [
   { key: 'relay→adsb.lol', upstream: 'adsb.lol', url: (lat, lon, r) => `${RELAY}/v2/point/${lat}/${lon}/${r}` },
@@ -138,14 +139,22 @@ async function fetchWx(icao) {
   } catch { return null; }
 }
 
+// Arrivals graded in this isolate in the last half hour. A flight taxiing in
+// after landing looks exactly like one taxiing out, so without this every
+// arrival was also locked as a "departure" that could never be graded — pure
+// D1 write churn. Best effort: a fresh isolate just forgets.
+const recentlyLanded = new Map(); // `${icao}:${id}` -> landed ts
+const LANDED_MEMORY_MS = 30 * 60000;
+
 // One airport, one tick. Returns { graded, locked } counts.
 export async function tickAirport(env, icao) {
   const airport = AIRPORTS[icao];
   const now = Date.now();
+  for (const [k, ts] of recentlyLanded) if (now - ts > LANDED_MEMORY_MS) recentlyLanded.delete(k);
 
-  const [tracks, wx, model, open, arrRate, cfgState] = await Promise.all([
+  const [tracks, wx, model, open, arrRate, cfgState, etaModel] = await Promise.all([
     fetchTraffic(airport), fetchWx(icao), loadModel(env.DB, icao), loadOpen(env.DB, icao), arrRate1h(env.DB, icao, now),
-    loadConfig(env.DB, icao),
+    loadConfig(env.DB, icao), trainedModel(UA),
   ]);
 
   // Departure predictions share the predictions table with 'dep:'-prefixed ids.
@@ -155,9 +164,11 @@ export async function tickAirport(env, icao) {
   }
 
   const priorFn = priorFromModel(model);
+  const depModel = model.rwy.dep || (model.rwy.dep = emptyDepModel());
   const live = tracks.filter((t) => t.altFt == null || t.altFt < 60000);
   // Two passes: wind base config, then re-allocate to the configuration read
-  // off aircraft actually on final (matches how the field is really operating).
+  // off traffic — aircraft on final for arrivals, climb-outs for departures
+  // (matches how the field is really operating).
   const baseRwys = allocateRunways(airport, wx || {});
   let annotated = annotateAircraft(live, airport, baseRwys, {}, priorFn);
   const obsNow = inferActiveArrivals(annotated, airport);
@@ -165,19 +176,25 @@ export async function tickAirport(env, icao) {
   // through quiet ticks (real configs are stable for hours) rather than reverting
   // to the wind guess when nothing happens to be on final that minute.
   let observed = obsNow;
-  let cfgToSave = null;
+  let cfg = cfgState ? { ...cfgState } : null; // { ends, ts, dep }
+  let cfgDirty = false;
   if (obsNow.size) {
     const ends = [...obsNow.keys()];
     const prev = cfgState?.ends || [];
     const changed = ends.length !== prev.length || ends.some((e) => !prev.includes(e));
     // Only persist the sticky config on a real change, or at most every ~10 min to
     // refresh its timestamp — not every active tick (that was ~1 write/min/hub).
-    if (changed || !cfgState || now - cfgState.ts > 10 * 60000) cfgToSave = { ends, ts: now };
-  } else if (cfgState && now - cfgState.ts < 25 * 60000) {
+    if (changed || !cfgState || now - cfgState.ts > 10 * 60000) { cfg = { ...(cfg || {}), ends, ts: now }; cfgDirty = true; }
+  } else if (cfgState?.ends?.length && now - cfgState.ts < 25 * 60000) {
     observed = new Map(cfgState.ends.map((e) => [e, 1]));
   }
-  const rwys = observed.size ? allocateRunways(airport, wx || {}, observed) : baseRwys;
-  if (observed.size) annotated = annotateAircraft(live, airport, rwys, {}, priorFn);
+  // Departure flow: every climb-out seen in the last 45 min, kept with the
+  // config row (written only when a new departure is seen).
+  const { flow, added } = observeDepartures(cfgState?.dep, annotated, airport, now);
+  if (added) { cfg = { ends: [], ts: 0, ...(cfg || {}), dep: flow }; cfgDirty = true; }
+  const depW = flowWeights(flow, now);
+  const rwys = observed.size || depW.size ? allocateRunways(airport, wx || {}, observed.size ? observed : null, depW) : baseRwys;
+  annotated = annotateAircraft(live, airport, rwys, {}, priorFn, makeDeparturePlanner(airport, depW, depModel));
   const arrEnds = rwys.filter((r) => r.role.includes('ARR')).map((r) => r.activeEnd);
   const depEnds = rwys.filter((r) => r.role.includes('DEP')).map((r) => r.activeEnd);
 
@@ -186,6 +203,8 @@ export async function tickAirport(env, icao) {
   const byId = new Map(annotated.map((a) => [a.id, a]));
 
   // ---- departures: lock while taxiing, grade on climb-out -----------------
+  // The locked plan keeps every expert's call (departures.js), so each graded
+  // departure scores them all and the best one at this airport takes over.
   const depGrades = [];              // graded departures (entries)
   const depUpserts = new Map();
   const depDeletes = new Set();
@@ -193,27 +212,49 @@ export async function tickAirport(env, icao) {
     const did = 'dep:' + ac.id;
     const d = openDep.get(did);
     if (!d) {
-      if (wx && ac.phase === 'GROUND' && ac.runway && ac.gs > 5 && ac.gs < 60 && !open.has(ac.id)) {
-        const rec = { id: did, callsign: ac.callsign, lockTs: now, lockOct: 0, predRunway: ac.runway, rawEtaTs: now, predEtaTs: now, lastSeen: now, sample: null, features: null };
+      if (wx && ac.phase === 'GROUND' && ac.depPlan?.end && ac.distNm <= ON_FIELD_NM && ac.gs > 5 && ac.gs < 60 && !open.has(ac.id)
+          && !recentlyLanded.has(`${icao}:${ac.id}`)) {
+        const p = ac.depPlan;
+        const rec = {
+          id: did, callsign: ac.callsign, lockTs: now, lockOct: 0, predRunway: p.end, rawEtaTs: now, predEtaTs: now, lastSeen: now,
+          sample: { moved: now },
+          features: { by: p.by, ctx: p.ctx, cell: p.cell, picks: p.picks },
+        };
         openDep.set(did, rec);
         depUpserts.set(did, rec);
       }
       continue;
     }
-    d.lastSeen = now;
     const actual = departureEnd(ac, airport);
     if (actual) {
       depDeletes.add(did);
+      const plan = d.features;
       depGrades.push({ icao, iata: airport.iata, ts: now, callsign: d.callsign,
-        items: [{ cat: 'deprwy', predicted: d.predRunway, actual, ok: actual === d.predRunway }] });
-    } else if (ac.phase === 'GROUND' && ac.gs < 3 && now - d.lockTs > 10 * 60000) {
-      depDeletes.add(did); // returned to stand, never departed
-    } else {
+        items: [{ cat: 'deprwy', predicted: d.predRunway, actual, ok: actual === d.predRunway, ...(plan?.by ? { by: plan.by } : {}) }] });
+      if (plan?.picks) learnDeparture(depModel, plan, actual);
+      continue;
+    }
+    const prevSeen = d.lastSeen;
+    const st = d.sample || { moved: d.lockTs };
+    const prevMoved = st.moved;
+    if (ac.gs >= 3) st.moved = now;
+    d.sample = st;
+    if (ac.phase === 'GROUND' && ac.gs < 3 && now - st.moved > 20 * 60000) {
+      // Stationary for 20 min: parked (a taxi-in arrival at its stand, or a
+      // return to the gate). Queues at the hold short creep forward well within
+      // that, so long JFK lines are no longer dropped after 10 minutes.
+      depDeletes.add(did);
+    } else if (now - d.lockTs > 90 * 60000) {
+      depDeletes.add(did); // never seen climbing out
+    } else if (now - prevSeen >= 150000 || (ac.gs >= 3 && now - prevMoved > 5 * 60000)) {
+      // Refresh at most every 2.5 min (or when it starts moving again) instead
+      // of every tick — departure records were the tracker's largest writer.
+      d.lastSeen = now;
       depUpserts.set(did, d);
     }
   }
   for (const [did, d] of openDep) {
-    if (!byId.has(did.slice(4)) && now - d.lastSeen > 6 * 60000) depDeletes.add(did);
+    if (!byId.has(did.slice(4)) && now - d.lastSeen > 10 * 60000) depDeletes.add(did);
   }
 
   // Accumulate writes so the batch never contains duplicate primary keys:
@@ -225,6 +266,7 @@ export async function tickAirport(env, icao) {
   let graded = 0, locked = 0;
 
   const finalize = (o, landedTs) => {
+    recentlyLanded.set(`${icao}:${o.id}`, now);
     const actualRunway = o.sample ? classifyLandingRunway(o.sample, airport) : null;
     if (o.sample) {
       recordLandingIntoModel(model, o.lockOct, actualRunway, (landedTs - o.rawEtaTs) / 1000);
@@ -279,7 +321,7 @@ export async function tickAirport(env, icao) {
         // Graded ETA = raw + trained-model correction (adopted airports), else the
         // online bias. rawEtaTs is kept for training so the model always learns
         // the full error (no feedback loop). See src/engine/etaModel.js.
-        const corr = etaCorrectionSec(ETA_MODEL, icao, features);
+        const corr = etaCorrectionSec(etaModel, icao, features);
         const predEtaTs = rawEtaTs + (corr != null ? corr : etaBiasSec(model)) * 1000;
         features.pred_eta_ts = predEtaTs;
         const rec = {
@@ -354,8 +396,12 @@ export async function tickAirport(env, icao) {
   // The model only changes when a landing was graded this tick, so don't rewrite
   // it every idle minute (that was ~1 write/min/hub of pure churn).
   if (graded > 0) stmts.push(saveModelStmt(env.DB, model));
-  if (cfgToSave) stmts.push(saveConfigStmt(env.DB, icao, cfgToSave));
+  if (cfgDirty) stmts.push(saveConfigStmt(env.DB, icao, cfg));
 
   if (stmts.length) await env.DB.batch(stmts);
-  return { icao, graded, locked, samples: samples.length, tracked: annotated.length, source: tracks.source || null };
+  return {
+    icao, graded, locked, samples: samples.length, tracked: annotated.length, source: tracks.source || null,
+    // What the traffic shows the field is using right now (for /api/health).
+    config: { arr: arrEnds, dep: [...depW.keys()] },
+  };
 }

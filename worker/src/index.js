@@ -4,9 +4,12 @@
 //     GET /api/scorecard[?icao=KJFK]   global accuracy + recent landings
 //     GET /api/model                    learned model params (all airports)
 //     GET /api/health                   liveness, data freshness per hub, stale flag
+//     GET /api/dataset.jsonl            labeled training rows (paged, newest first)
 
-import { tickAirport, TRACKED } from './tracker.js';
-import { getScorecard, getModels, datasetCount, datasetRows, loadTickState, saveTickStmt } from './store.js';
+import { tickAirport, TRACKED, UA } from './tracker.js';
+import { getScorecard, getModels, datasetCount, datasetRows, loadTickState, saveTickStmt, loadStates, saveStateStmt, ALERT_KEY } from './store.js';
+import { trainedModel, modelInfo } from './modelSource.js';
+import { runAlerts, alertsConfigured } from './alerts.js';
 
 // A hub is 'stale' if it hasn't completed a successful tick in this long.
 const STALE_MS = 10 * 60 * 1000;
@@ -36,18 +39,28 @@ export default {
         )
       );
       console.log('tick', JSON.stringify(results));
-      // Heartbeat: remember when each hub last ticked successfully.
+      // Heartbeat: remember when each hub last ticked successfully — then let the
+      // alerting decide whether that is news worth an email.
       try {
         const now = Date.now();
-        const prev = (await loadTickState(env.DB)) || { hubs: {} };
+        const st = await loadStates(env.DB, ['tick:last', ALERT_KEY]);
+        const prev = st['tick:last'] || { hubs: {} };
         const hubs = {};
         for (const r of results) {
           const was = prev.hubs?.[r.icao] || {};
           hubs[r.icao] = r.error
-            ? { ok: false, error: r.error.slice(0, 200), lastOkTs: was.lastOkTs || null, tracked: was.tracked ?? null }
-            : { ok: true, lastOkTs: now, tracked: r.tracked, graded: r.graded, locked: r.locked, source: r.source };
+            ? { ok: false, error: r.error.slice(0, 200), lastOkTs: was.lastOkTs || null, tracked: was.tracked ?? null, config: was.config || null }
+            : { ok: true, lastOkTs: now, tracked: r.tracked, graded: r.graded, locked: r.locked, source: r.source, config: r.config };
         }
-        await saveTickStmt(env.DB, { ts: now, hubs }).run();
+        const stmts = [saveTickStmt(env.DB, { ts: now, hubs })];
+        const info = modelInfo();
+        const alertState = await runAlerts(env, {
+          now, tracked: TRACKED, hubs, state: st[ALERT_KEY], ua: UA,
+          modelGeneratedAt: info.generatedAt ? Date.parse(info.generatedAt) : null,
+          modelSource: info.source,
+        });
+        if (alertState) stmts.push(saveStateStmt(env.DB, ALERT_KEY, alertState));
+        await env.DB.batch(stmts);
       } catch (e) { console.error('heartbeat failed', e); }
     })());
   },
@@ -83,6 +96,7 @@ export default {
         const tick = await loadTickState(env.DB);
         const hubs = tick?.hubs || {};
         const staleHubs = TRACKED.filter((i) => !hubs[i]?.lastOkTs || now - hubs[i].lastOkTs > STALE_MS);
+        await trainedModel(UA);
         return served(json({
           ok: staleHubs.length === 0,
           stale: staleHubs,
@@ -90,16 +104,21 @@ export default {
           samples: await datasetCount(env.DB),
           lastTickTs: tick?.ts || null,
           hubs,
+          model: modelInfo(),
+          alerts: alertsConfigured(env),
           ts: now,
           // 503 when any hub is stale, so even a status-code-only uptime monitor
           // (e.g. UptimeRobot's free tier) alerts on a stalled data feed.
         }, staleHubs.length ? 503 : 200, 30));
       }
       // Training dataset as JSONL (one labeled landing per line) for offline ML.
+      // Up to 20,000 rows per request; follow X-Next-Before (?before=<id>) for
+      // older pages until it is absent — that walks the whole history.
       if (url.pathname === '/api/dataset.jsonl') {
         const icao = url.searchParams.get('icao');
         const limit = Math.min(parseInt(url.searchParams.get('limit') || '5000', 10) || 5000, 20000);
-        const rows = await datasetRows(env.DB, icao && TRACKED.includes(icao) ? icao : null, limit);
+        const before = parseInt(url.searchParams.get('before') || '0', 10) || null;
+        const { rows, nextBefore } = await datasetRows(env.DB, icao && TRACKED.includes(icao) ? icao : null, limit, before);
         // The rows are an adapted database derived from ADS-B positions that
         // include adsb.lol data (ODbL 1.0), so ODbL's share-alike clause makes the
         // export ODbL 1.0 as well. Declared here machine-readably; the code stays MIT.
@@ -110,7 +129,8 @@ export default {
             Link: '<https://opendatacommons.org/licenses/odbl/1-0/>; rel="license"',
             'X-Data-License': 'ODbL-1.0',
             'X-Data-Attribution': 'Contains data from adsb.lol (ODbL 1.0) and adsb.fi (https://adsb.fi); weather from NOAA/NWS Aviation Weather Center; airports from OurAirports.',
-            'Access-Control-Expose-Headers': 'Link, X-Data-License, X-Data-Attribution',
+            ...(nextBefore ? { 'X-Next-Before': String(nextBefore) } : {}),
+            'Access-Control-Expose-Headers': 'Link, X-Data-License, X-Data-Attribution, X-Next-Before',
             ...CORS,
           },
         }));

@@ -9,12 +9,13 @@ import { classifyWeather } from '../lib/weatherFx.js';
 import { useSettings } from '../hooks/useSettings.jsx';
 
 // Legend rows double as category filter toggles. `key` maps to prefs.filters.
+// The short label is what phones show (one row under the scope).
 const LEGEND = [
-  ['#3ddc97', 'ARRIVAL / APPROACH', 'arr'],
-  ['#4cc9f0', 'DEPARTURE', 'dep'],
-  ['#4a6272', 'ENROUTE / OVERFLIGHT', 'enr'],
-  ['#a78bfa', 'GROUND', 'gnd'],
-  ['#ff5c5c', 'CONFLICT', null], // overlay, always shown
+  ['#3ddc97', 'ARRIVAL / APPROACH', 'arr', 'ARR'],
+  ['#4cc9f0', 'DEPARTURE', 'dep', 'DEP'],
+  ['#4a6272', 'ENROUTE / OVERFLIGHT', 'enr', 'ENR'],
+  ['#a78bfa', 'GROUND', 'gnd', 'GND'],
+  ['#ff5c5c', 'CONFLICT', null, 'CONFLICT'], // overlay, always shown
 ];
 
 // Shared chrome for the scope: view toggle (3D / 2D), range, trails, labels,
@@ -127,7 +128,7 @@ export default function RadarPanel(props) {
           )}
         </div>
         <div className="radar-legend">
-          {LEGEND.map(([c, t, key]) => {
+          {LEGEND.map(([c, t, key, short]) => {
             const active = !key || (filters ? filters[key] : true);
             return (
               <button
@@ -135,8 +136,10 @@ export default function RadarPanel(props) {
                 className={`legend-row ${key ? 'toggle' : ''} ${active ? '' : 'off'}`}
                 onClick={key && view ? () => view.toggleFilter(key) : undefined}
                 disabled={!key || !view}
+                aria-label={key ? `${active ? 'Hide' : 'Show'} ${t.toLowerCase()}` : t}
               >
-                <i style={{ background: c, opacity: active ? 1 : 0.25 }} />{t}
+                <i style={{ background: c, opacity: active ? 1 : 0.25 }} />
+                <span className="lg-long">{t}</span><span className="lg-short">{short}</span>
               </button>
             );
           })}

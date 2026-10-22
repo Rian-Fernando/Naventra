@@ -5,6 +5,7 @@ import { fetchMetar } from '../lib/weather.js';
 import { fetchTaf } from '../lib/forecast.js';
 import { buildOutlook } from '../engine/forecast.js';
 import { allocateRunways, annotateAircraft, detectConflicts, generateEvents, computeKpis, inferActiveArrivals, departureEnd } from '../engine/atc.js';
+import { observeDepartures, flowWeights, makeDeparturePlanner, learnDeparture, emptyDepModel } from '../engine/departures.js';
 import { computeCapacity } from '../engine/capacity.js';
 import { detectSurface } from '../engine/surface.js';
 import { PredictionTracker } from '../engine/predictions.js';
@@ -66,6 +67,8 @@ export function useAtcSystem() {
     generation: 0,
     globalPrior: null,
     opsLog: [],
+    depFlow: [],     // recent climb-outs [id, runwayEnd, ts] — the observed departure flow
+    depModel: null,  // the 24/7 tracker's learned departure experts (tracked hubs)
   });
 
   const pushEvents = useCallback((evDecisions, evComms) => {
@@ -90,8 +93,14 @@ export function useAtcSystem() {
     if (obsNow.size) r.observedConfig = { ends: [...obsNow.keys()], ts: Date.now() };
     const fresh = r.observedConfig && Date.now() - r.observedConfig.ts < 20 * 60 * 1000;
     const observed = obsNow.size ? obsNow : (fresh ? new Map(r.observedConfig.ends.map((e) => [e, 1])) : new Map());
-    const rwys = observed.size ? allocateRunways(ap, r.weather, observed) : baseRwys;
-    if (observed.size) annotated = annotateAircraft(tracks, ap, rwys, r.gateMap, priorFn);
+    // Departures the same way: the runways traffic is actually climbing out of
+    // (seeded from the 24/7 tracker at the hubs it watches) decide the DEP roles
+    // and which runway each taxiing flight is planned for.
+    const now = Date.now();
+    r.depFlow = observeDepartures(r.depFlow, annotated, ap, now).flow;
+    const depW = flowWeights(r.depFlow, now);
+    const rwys = observed.size || depW.size ? allocateRunways(ap, r.weather, observed.size ? observed : null, depW) : baseRwys;
+    annotated = annotateAircraft(tracks, ap, rwys, r.gateMap, priorFn, makeDeparturePlanner(ap, depW, r.depModel));
     r.runways = rwys;
     setRunways(rwys);
     const confl = detectConflicts(annotated, ap);
@@ -104,6 +113,9 @@ export function useAtcSystem() {
     if (!r.tracker) r.tracker = new PredictionTracker(ap);
     const verifyEvents = r.tracker.update(annotated, rwys, isLive, !!r.weather, departureEnd);
     for (const ev of verifyEvents) {
+      // Score the departure experts on every live departure seen climbing out.
+      // At the 24/7 hubs the tracker's global model replaces this every 5 min.
+      if (ev.depPlan && ev.live) learnDeparture(r.depModel || (r.depModel = emptyDepModel()), ev.depPlan, ev.actual);
       evD.unshift({
         id: `vf${ev.callsign}${Date.now()}`, ts: Date.now(),
         type: ev.kind === 'goaround' ? 'GO-AROUND' : 'VERIFY',
@@ -162,6 +174,8 @@ export function useAtcSystem() {
     r.rwySignature = '';
     r.observedConfig = null;
     r.opsLog = [];
+    r.depFlow = [];
+    r.depModel = null;
     setAircraft([]);
     setConflicts([]);
     setDecisions([]);
@@ -192,7 +206,17 @@ export function useAtcSystem() {
     }
     async function pollModels() {
       const payload = await fetchGlobalModels();
-      if (!stop && payload) r.globalPrior = priorFnFromModels(payload);
+      if (stop || !payload) return;
+      r.globalPrior = priorFnFromModels(payload);
+      const hub = payload.models?.[icao];
+      if (hub?.rwy?.dep) r.depModel = hub.rwy.dep;
+      // Seed the departure flow with the tracker's recent climb-outs so a fresh
+      // console knows the departure runways before it has seen a takeoff itself.
+      if (Array.isArray(hub?.depFlow)) {
+        const have = new Set(r.depFlow.map((f) => f[0]));
+        const add = hub.depFlow.filter((f) => Array.isArray(f) && f.length === 3 && !have.has(f[0]));
+        if (add.length) r.depFlow = [...r.depFlow, ...add].sort((a, b) => a[2] - b[2]);
+      }
     }
     pollScore();
     pollModels();

@@ -1,13 +1,19 @@
 name: Train model
 
-# Weekly retrain: pull the always-on tracker's dataset, train the per-airport
-# runway model, evaluate it head-to-head against the live engine, and commit the
-# refreshed model + report. Only airports where the model beats the engine on the
-# time-split are flagged for adoption (see scripts/train_model.py).
+# Weekly retrain: pull the always-on tracker's full dataset (every page, so every
+# season seen so far), train the per-airport runway and ETA models with recency
+# weighting, evaluate them head-to-head against what is live on the most recent
+# three weeks, and commit the refreshed model + report. Only airports where the
+# model wins on that recent window are flagged for adoption (scripts/train_model.py).
+# The worker picks up the new public/model.json from GitHub within the hour.
+#
+# GitHub can skip scheduled runs without notice (this one silently stopped after
+# 2026-09-07). The worker emails when the model is >10 days old, and with an
+# optional GITHUB_DISPATCH_TOKEN it re-runs this workflow itself (worker/README.md).
 
 on:
   schedule:
-    - cron: "0 7 * * 1" # Mondays 07:00 UTC
+    - cron: "23 7 * * 1" # Mondays 07:23 UTC (off the top of the hour, when GitHub is busiest)
   workflow_dispatch:
 
 jobs:

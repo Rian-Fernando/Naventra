@@ -5,6 +5,7 @@
 
 import { windComponents } from '../../src/lib/geo.js';
 import { octantOf } from '../../src/engine/octant.js';
+import { dayOfYear } from '../../src/engine/etaModel.js';
 
 // ICAO type designator → wake turbulence category: J super, H heavy, M medium,
 // L light. Drives spacing and, at some fields, runway assignment.
@@ -100,6 +101,7 @@ export function lockFeatures(ac, airport, ctx) {
     hour_utc: d.getUTCHours(),
     hour_local: localHour(airport.tz, d),
     dow: d.getUTCDay(),
+    doy: dayOfYear(d), // season — the trainer uses it once the data spans a year
     // --- configuration & load ---
     active_arr: arrEnds.join(','),
     active_dep: depEnds.join(','),

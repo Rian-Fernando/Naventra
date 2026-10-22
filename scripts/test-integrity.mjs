@@ -152,5 +152,21 @@ await check('generated phraseology is labelled as generated, not as recorded rad
   assert.ok(!/Radio Communications — VHF/.test(c));
 });
 
+// ------------------------------------------------------------------ secrets --
+// Alert credentials and the alert recipient live only in Cloudflare secrets.
+const { execSync } = await import('node:child_process');
+const tracked = execSync('git ls-files', { cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8' })
+  .split('\n').filter((f) => f && !/\.(png|jpe?g|webp|ico|woff2?|gif|pdf|mp4)$/i.test(f));
+await check('no API keys or tokens in tracked files', () => {
+  const pat = /\bre_[A-Za-z0-9]{8,}_[A-Za-z0-9]{8,}|\b(?:ghp|gho|ghs|github_pat)_[A-Za-z0-9_]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----/;
+  const hits = tracked.filter((f) => { try { return pat.test(src(f)); } catch { return false; } });
+  assert.deepStrictEqual(hits, []);
+});
+await check('alert recipient and keys are secrets, not config', () => {
+  const toml = src('worker/wrangler.toml');
+  assert.ok(!/^\s*(RESEND_API_KEY|ALERT_TO|GITHUB_DISPATCH_TOKEN)\s*=/m.test(toml), 'secret in wrangler.toml');
+  assert.ok(!/@(gmail|outlook|hotmail|yahoo|icloud)\.com/i.test(src('worker/src/alerts.js')), 'hard-coded recipient');
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
