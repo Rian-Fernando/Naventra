@@ -68,7 +68,7 @@ function hubLines(tracked, hubs, now) {
 // Pure decision: given the latest heartbeat and the stored alert state, which
 // emails are due. Each email carries the state change to keep once it is sent;
 // `patch` holds changes that need no email. No I/O — unit-tested directly.
-export function planAlerts({ now, tracked, hubs, modelGeneratedAt, modelSource = 'github', state }) {
+export function planAlerts({ now, tracked, hubs, prevHubs = null, modelGeneratedAt, modelSource = 'github', state }) {
   const s = state || {};
   const emails = [];
   const patch = {};
@@ -105,14 +105,25 @@ export function planAlerts({ now, tracked, hubs, modelGeneratedAt, modelSource =
         patch: { down: { ...s.down, hubs: downHubs, sentTs: now } },
       });
     }
-  } else if (s.down && allFresh) {
-    emails.push({
-      kind: 'recovered',
-      idem: `naventra-recovered-${s.down.since}`,
-      subject: subject('RECOVERED', `all hubs updating again (down ${fmtDur(now - s.down.since)})`),
-      text: `Every hub is completing ticks with live data again. It had stopped at ${s.down.hubs.join(', ')} from ${fmtTs(s.down.since)} — about ${fmtDur(now - s.down.since)}.\n\n${status}\n\nLive status: ${HEALTH_URL}\n`,
-      patch: { down: null },
-    });
+  } else if (allFresh) {
+    // Normally the outage is in the saved alert state. If the database was the
+    // thing that failed, that state never got saved — so also read the outage
+    // off the previous heartbeat (hubs whose last good tick was >2 h before
+    // this one), or the DOWN email would never get its RECOVERED.
+    let down = s.down;
+    if (!down && prevHubs) {
+      const was = tracked.filter((i) => prevHubs[i]?.lastOkTs && now - prevHubs[i].lastOkTs > DOWN_AFTER_MS);
+      if (was.length) down = { since: Math.min(...was.map((i) => prevHubs[i].lastOkTs)), hubs: was };
+    }
+    if (down) {
+      emails.push({
+        kind: 'recovered',
+        idem: `naventra-recovered-${down.since}`,
+        subject: subject('RECOVERED', `all hubs updating again (down ${fmtDur(now - down.since)})`),
+        text: `Every hub is completing ticks with live data again. It had stopped at ${down.hubs.join(', ')} from ${fmtTs(down.since)} — about ${fmtDur(now - down.since)}.\n\n${status}\n\nLive status: ${HEALTH_URL}\n`,
+        patch: { down: null },
+      });
+    }
   }
 
   if (modelGeneratedAt && now - modelGeneratedAt > MODEL_STALE_MS) {
@@ -201,7 +212,7 @@ export function resetDatabaseStreak() { dbFailStreak = 0; }
 
 // Run once per cron tick, after the heartbeat. Returns the new state to persist
 // (or null when nothing changed).
-export async function runAlerts(env, { now, tracked, hubs, modelGeneratedAt, modelSource, state, ua }) {
+export async function runAlerts(env, { now, tracked, hubs, prevHubs, modelGeneratedAt, modelSource, state, ua }) {
   const prev = state || {};
   const s = { ...prev };
 
@@ -213,7 +224,7 @@ export async function runAlerts(env, { now, tracked, hubs, modelGeneratedAt, mod
   }
 
   if (alertsConfigured(env) && !(prev.sendFailTs && now - prev.sendFailTs < SEND_RETRY_MS)) {
-    const plan = planAlerts({ now, tracked, hubs, modelGeneratedAt, modelSource, state: s });
+    const plan = planAlerts({ now, tracked, hubs, prevHubs, modelGeneratedAt, modelSource, state: s });
     Object.assign(s, plan.patch);
     for (const email of plan.emails) {
       try {

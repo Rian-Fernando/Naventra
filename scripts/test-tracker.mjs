@@ -82,6 +82,15 @@ let downState;
   const p = planAlerts({ now, tracked: T, hubs: healthy, modelGeneratedAt: null, state: afterSetup });
   check('model without a timestamp: no STALE guess', p.emails.length === 0);
 }
+{
+  // The database was what failed: DOWN went out but its state was never saved.
+  // Recovery is read off the previous heartbeat instead.
+  const prevHubs = { KJFK: live(now - 4 * 3600000), KLAX: live(now - 4 * 3600000), EGLL: live(now - 4 * 3600000) };
+  const p = planAlerts({ now, tracked: T, hubs: healthy, prevHubs, modelGeneratedAt: fresh, state: afterSetup });
+  check('RECOVERED still sent when the outage state was never saved', p.emails.length === 1 && p.emails[0].kind === 'recovered' && /4 h 00 min/.test(p.emails[0].subject), p.emails.map((e) => e.subject).join(' | '));
+  const q = planAlerts({ now, tracked: T, hubs: healthy, prevHubs: healthy, modelGeneratedAt: fresh, state: afterSetup });
+  check('no RECOVERED after a normal minute', q.emails.length === 0);
+}
 check('duration formatting', fmtDur(125 * 60000) === '2 h 05 min' && fmtDur(50 * 3600000) === '2 days 2 h', `${fmtDur(125 * 60000)} / ${fmtDur(50 * 3600000)}`);
 {
   // One subject format across projects: "[Project] STATUS — detail".

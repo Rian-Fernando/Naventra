@@ -55,7 +55,7 @@ export default {
         const stmts = [saveTickStmt(env.DB, { ts: now, hubs })];
         const info = modelInfo();
         const alertState = await runAlerts(env, {
-          now, tracked: TRACKED, hubs, state: st[ALERT_KEY], ua: UA,
+          now, tracked: TRACKED, hubs, prevHubs: prev.hubs || null, state: st[ALERT_KEY], ua: UA,
           modelGeneratedAt: info.generatedAt ? Date.parse(info.generatedAt) : null,
           modelSource: info.source,
         });
