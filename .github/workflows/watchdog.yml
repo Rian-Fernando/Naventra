@@ -1,10 +1,12 @@
 name: Tracker watchdog
 
 # Outside check that the always-on Cloudflare tracker itself is alive. The
-# worker emails its own data-feed and model alerts (worker/src/alerts.js), but
-# it cannot report its own death — a crashed deploy, a database over its free
-# limits, a cron that stopped. This job reads /api/health hourly from GitHub's
-# side; a failed run makes GitHub email the repo owner. Read-only, no secrets.
+# worker emails its own data-feed, database and model alerts
+# (worker/src/alerts.js), but it cannot report its own death — a crashed deploy,
+# a cron that stopped. This job reads /api/health from GitHub's side; a
+# failed run makes GitHub email the repo owner. Read-only, no secrets. It is
+# scheduled hourly, but GitHub runs scheduled jobs best-effort — in practice
+# every 3–5 hours — so it is a backstop, not a pager.
 #
 # It fails only when the worker is unreachable / erroring or its cron has not
 # completed a tick in 20 minutes. A slow live-data feed (HTTP 503 with fresh

@@ -1,6 +1,9 @@
 -- Naventra always-on tracker — D1 schema.
 
--- Open predictions: one row per aircraft locked on approach, awaiting outcome.
+-- Legacy: open predictions used to be one row per aircraft. Since Oct 2026 they
+-- live in one JSON row per hub in `state` (key open:<icao>) to stay inside D1's
+-- free daily write limit; this table is emptied on the first tick and kept only
+-- so older deployments keep working.
 CREATE TABLE IF NOT EXISTS predictions (
   id            TEXT PRIMARY KEY,   -- icao|hex
   icao          TEXT NOT NULL,
@@ -31,8 +34,6 @@ CREATE TABLE IF NOT EXISTS samples (
   features_json TEXT NOT NULL,
   outcome_json  TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_samples_ts ON samples(ts DESC);
-CREATE INDEX IF NOT EXISTS idx_samples_icao ON samples(icao);
 -- Composite: the tick's arr-rate query filters WHERE icao=? AND ts>? every minute.
 CREATE INDEX IF NOT EXISTS idx_samples_icao_ts ON samples(icao, ts);
 

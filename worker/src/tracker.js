@@ -11,7 +11,7 @@ import { observeDepartures, flowWeights, makeDeparturePlanner, learnDeparture, e
 import { trainedModel } from './modelSource.js';
 import {
   loadModel, priorFromModel, recordLandingIntoModel, etaBiasSec,
-  loadOpen, upsertOpenStmt, deleteOpenStmt, recordLandingStmt, bumpStatsStmt, saveModelStmt,
+  loadOpen, loadOpenState, saveOpenStateStmt, clearLegacyOpenStmt, recordLandingStmt, bumpStatsStmt, saveModelStmt,
   recordSampleStmt, arrRate1h, loadConfig, saveConfigStmt,
 } from './store.js';
 import { lockFeatures, decodeWx } from './features.js';
@@ -146,21 +146,46 @@ async function fetchWx(icao) {
 const recentlyLanded = new Map(); // `${icao}:${id}` -> landed ts
 const LANDED_MEMORY_MS = 30 * 60000;
 
+// Safety valve on the open-state row (normally a few dozen records).
+const MAX_OPEN = 400;
+
+// Records are stored without their id (it's the map key).
+function toMap(obj) {
+  const m = new Map();
+  for (const [id, rec] of Object.entries(obj || {})) m.set(id, { ...rec, id });
+  return m;
+}
+function fromMap(m) {
+  const out = {};
+  const recs = [...m.values()].sort((a, b) => a.lockTs - b.lockTs).slice(-MAX_OPEN);
+  for (const { id, ...rec } of recs) out[id] = rec;
+  return out;
+}
+
 // One airport, one tick. Returns { graded, locked } counts.
 export async function tickAirport(env, icao) {
   const airport = AIRPORTS[icao];
   const now = Date.now();
   for (const [k, ts] of recentlyLanded) if (now - ts > LANDED_MEMORY_MS) recentlyLanded.delete(k);
 
-  const [tracks, wx, model, open, arrRate, cfgState, etaModel] = await Promise.all([
-    fetchTraffic(airport), fetchWx(icao), loadModel(env.DB, icao), loadOpen(env.DB, icao), arrRate1h(env.DB, icao, now),
+  const [tracks, wx, model, openSaved, arrRate, cfgState, etaModel] = await Promise.all([
+    fetchTraffic(airport), fetchWx(icao), loadModel(env.DB, icao), loadOpenState(env.DB, icao), arrRate1h(env.DB, icao, now),
     loadConfig(env.DB, icao), trainedModel(UA),
   ]);
 
-  // Departure predictions share the predictions table with 'dep:'-prefixed ids.
-  const openDep = new Map();
-  for (const [id, o] of [...open]) {
-    if (id.startsWith('dep:')) { openDep.set(id, o); open.delete(id); }
+  // Open predictions: arrivals keyed by hex, departures by 'dep:'+hex. The first
+  // tick after the one-row-per-hub change migrates the old per-row records.
+  let open, openDep, legacy = false;
+  if (openSaved) {
+    open = toMap(openSaved.state.arr);
+    openDep = toMap(openSaved.state.dep);
+  } else {
+    legacy = true;
+    open = await loadOpen(env.DB, icao);
+    openDep = new Map();
+    for (const [id, o] of [...open]) {
+      if (id.startsWith('dep:')) { openDep.set(id, o); open.delete(id); }
+    }
   }
 
   const priorFn = priorFromModel(model);
@@ -206,8 +231,6 @@ export async function tickAirport(env, icao) {
   // The locked plan keeps every expert's call (departures.js), so each graded
   // departure scores them all and the best one at this airport takes over.
   const depGrades = [];              // graded departures (entries)
-  const depUpserts = new Map();
-  const depDeletes = new Set();
   for (const ac of annotated) {
     const did = 'dep:' + ac.id;
     const d = openDep.get(did);
@@ -221,48 +244,39 @@ export async function tickAirport(env, icao) {
           features: { by: p.by, ctx: p.ctx, cell: p.cell, picks: p.picks },
         };
         openDep.set(did, rec);
-        depUpserts.set(did, rec);
       }
       continue;
     }
     const actual = departureEnd(ac, airport);
     if (actual) {
-      depDeletes.add(did);
+      openDep.delete(did);
       const plan = d.features;
       depGrades.push({ icao, iata: airport.iata, ts: now, callsign: d.callsign,
         items: [{ cat: 'deprwy', predicted: d.predRunway, actual, ok: actual === d.predRunway, ...(plan?.by ? { by: plan.by } : {}) }] });
       if (plan?.picks) learnDeparture(depModel, plan, actual);
       continue;
     }
-    const prevSeen = d.lastSeen;
+    d.lastSeen = now;
     const st = d.sample || { moved: d.lockTs };
-    const prevMoved = st.moved;
     if (ac.gs >= 3) st.moved = now;
     d.sample = st;
     if (ac.phase === 'GROUND' && ac.gs < 3 && now - st.moved > 20 * 60000) {
       // Stationary for 20 min: parked (a taxi-in arrival at its stand, or a
       // return to the gate). Queues at the hold short creep forward well within
       // that, so long JFK lines are no longer dropped after 10 minutes.
-      depDeletes.add(did);
+      openDep.delete(did);
     } else if (now - d.lockTs > 90 * 60000) {
-      depDeletes.add(did); // never seen climbing out
-    } else if (now - prevSeen >= 150000 || (ac.gs >= 3 && now - prevMoved > 5 * 60000)) {
-      // Refresh at most every 2.5 min (or when it starts moving again) instead
-      // of every tick — departure records were the tracker's largest writer.
-      d.lastSeen = now;
-      depUpserts.set(did, d);
+      openDep.delete(did); // never seen climbing out
     }
   }
   for (const [did, d] of openDep) {
-    if (!byId.has(did.slice(4)) && now - d.lastSeen > 10 * 60000) depDeletes.add(did);
+    if (!byId.has(did.slice(4)) && now - d.lastSeen > 10 * 60000) openDep.delete(did);
   }
 
   // Accumulate writes so the batch never contains duplicate primary keys:
   const landingEntries = [];             // one INSERT each
   const samples = [];                    // labeled training rows
   const statDelta = new Map();           // cat -> { n, correct }  (one upsert each)
-  const openUpserts = new Map();         // id -> record           (last write wins)
-  const openDeletes = new Set();         // id
   let graded = 0, locked = 0;
 
   const finalize = (o, landedTs) => {
@@ -302,7 +316,7 @@ export async function tickAirport(env, icao) {
       }
       graded++;
     }
-    openDeletes.add(o.id);
+    open.delete(o.id);
   };
 
   // Aircraft currently in view.
@@ -330,14 +344,11 @@ export async function tickAirport(env, icao) {
           lastSeen: now, sample: null, features,
         };
         open.set(ac.id, rec);
-        openUpserts.set(ac.id, rec);
         locked++;
       }
       continue;
     }
 
-    const prevSeen = o.lastSeen;
-    const prevSample = o.sample;
     o.lastSeen = now;
     if (!ac.onGround && ac.agl != null && ac.agl < 4000 && ac.gs > 60) {
       o.sample = { lat: ac.lat, lon: ac.lon, track: ac.track, agl: ac.agl, distNm: ac.distNm, seq: ac.seqRwy ?? o.sample?.seq ?? null };
@@ -346,16 +357,7 @@ export async function tickAirport(env, icao) {
     if (ac.onGround || (ac.agl != null && ac.agl < 120 && ac.gs < 90)) {
       finalize(o, now);
     } else if (o.sample && ac.vs > 700 && ac.distNm > o.sample.distNm + 0.4 && ac.agl > o.sample.agl + 250) {
-      openDeletes.add(ac.id); // go-around → void
-    } else {
-      // Throttle refresh writes: always persist near the runway (where the drop-out
-      // landing heuristic needs a fresh last_seen) or when the tracked sample moved;
-      // otherwise persist at most every ~2.5 min for far/high approaches. Cuts most
-      // of the per-minute open-prediction write volume without hurting accuracy.
-      const lowClose = o.sample && o.sample.agl < 2500 && o.sample.distNm < 6;
-      if (lowClose || o.sample !== prevSample || now - prevSeen >= 150000) {
-        openUpserts.set(ac.id, o); // refresh last_seen/sample
-      }
+      open.delete(ac.id); // go-around → void
     }
   }
 
@@ -367,7 +369,7 @@ export async function tickAirport(env, icao) {
     if (age > 90000 && o.sample && o.sample.agl < 2000 && o.sample.distNm < 5) {
       finalize(o, o.lastSeen + 30000);
     } else if (age > 15 * 60000) {
-      openDeletes.add(id);
+      open.delete(id);
     }
   }
 
@@ -389,10 +391,10 @@ export async function tickAirport(env, icao) {
   for (const entry of landingEntries) stmts.push(recordLandingStmt(env.DB, entry));
   for (const s of samples) stmts.push(recordSampleStmt(env.DB, s));
   for (const [cat, d] of statDelta) stmts.push(bumpStatsStmt(env.DB, icao, cat, d.n, d.correct));
-  for (const id of openDeletes) { openUpserts.delete(id); stmts.push(deleteOpenStmt(env.DB, id)); }
-  for (const id of depDeletes) { depUpserts.delete(id); stmts.push(deleteOpenStmt(env.DB, id)); }
-  for (const rec of openUpserts.values()) stmts.push(upsertOpenStmt(env.DB, icao, rec));
-  for (const rec of depUpserts.values()) stmts.push(upsertOpenStmt(env.DB, icao, rec));
+  // All open predictions in one row — written only when something changed.
+  const openJson = JSON.stringify({ arr: fromMap(open), dep: fromMap(openDep) });
+  if (openJson !== openSaved?.raw) stmts.push(saveOpenStateStmt(env.DB, icao, openJson));
+  if (legacy) stmts.push(clearLegacyOpenStmt(env.DB, icao));
   // The model only changes when a landing was graded this tick, so don't rewrite
   // it every idle minute (that was ~1 write/min/hub of pure churn).
   if (graded > 0) stmts.push(saveModelStmt(env.DB, model));
@@ -401,6 +403,7 @@ export async function tickAirport(env, icao) {
   if (stmts.length) await env.DB.batch(stmts);
   return {
     icao, graded, locked, samples: samples.length, tracked: annotated.length, source: tracks.source || null,
+    open: open.size + openDep.size,
     // What the traffic shows the field is using right now (for /api/health).
     config: { arr: arrEnds, dep: [...depW.keys()] },
   };

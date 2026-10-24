@@ -5,7 +5,7 @@
 //
 //   node scripts/test-tracker.mjs
 
-import { planAlerts, runAlerts, DOWN_AFTER_MS, MODEL_STALE_MS, fmtDur } from '../worker/src/alerts.js';
+import { planAlerts, runAlerts, planDatabaseAlert, alertDatabase, resetDatabaseStreak, DOWN_AFTER_MS, MODEL_STALE_MS, fmtDur } from '../worker/src/alerts.js';
 import { datasetRows } from '../worker/src/store.js';
 import { AIRPORTS } from '../src/data/airports.js';
 import { allocateRunways } from '../src/engine/atc.js';
@@ -83,6 +83,25 @@ let downState;
   check('model without a timestamp: no STALE guess', p.emails.length === 0);
 }
 check('duration formatting', fmtDur(125 * 60000) === '2 h 05 min' && fmtDur(50 * 3600000) === '2 days 2 h', `${fmtDur(125 * 60000)} / ${fmtDur(50 * 3600000)}`);
+{
+  // One subject format across projects: "[Project] STATUS — detail".
+  const all = [
+    ...planAlerts({ now, tracked: T, hubs: healthy, modelGeneratedAt: fresh, state: null }).emails,
+    ...planAlerts({ now, tracked: T, hubs: downHubs, modelGeneratedAt: fresh, state: afterSetup }).emails,
+    ...planAlerts({ now, tracked: T, hubs: healthy, modelGeneratedAt: fresh, state: downState }).emails,
+    ...planAlerts({ now, tracked: T, hubs: healthy, modelGeneratedAt: now - MODEL_STALE_MS - 1, state: afterSetup }).emails,
+  ];
+  const bad = all.filter((e) => !/^\[Naventra\] (ALERTS ON|DOWN|STILL DOWN|RECOVERED|STALE MODEL|DATABASE) — /.test(e.subject));
+  check('every subject reads "[Naventra] STATUS — detail"', all.length === 4 && bad.length === 0, bad.map((e) => e.subject).join(' | '));
+}
+{
+  const limitMsg = "D1_ERROR: Your account has exceeded D1's free tier daily row write limit.";
+  const a = planDatabaseAlert(limitMsg, now, 1);
+  check('database limit error alerts on the first tick', !!a && /DATABASE/.test(a.subject) && /midnight UTC/.test(a.text));
+  check('database alert key is per UTC day', a.idem === 'naventra-db-2026-10-22' && planDatabaseAlert(limitMsg, now + 86400000, 1).idem === 'naventra-db-2026-10-23');
+  check('a passing D1 blip does not alert', planDatabaseAlert('D1_ERROR: Network connection lost.', now, 2) === null);
+  check('…but five failed ticks in a row do', !!planDatabaseAlert('D1_ERROR: Network connection lost.', now, 5));
+}
 
 // runAlerts with a mocked network.
 const realFetch = globalThis.fetch;
@@ -102,7 +121,7 @@ try {
   const body = JSON.parse(c.init.body);
   check('sends through the Resend API', c.url === 'https://api.resend.com/emails' && c.init.method === 'POST');
   check('authenticates with the secret key + idempotency key', c.init.headers.Authorization === 'Bearer re_test' && !!c.init.headers['Idempotency-Key']);
-  check('sends from the verified domain to ALERT_TO', /@rianfernando\.com>$/.test(body.from) && body.to[0] === 'ops@example.com');
+  check('sends as "Naventra Alerts <naventra-alerts@rianfernando.com>" to ALERT_TO', body.from === 'Naventra Alerts <naventra-alerts@rianfernando.com>' && body.to[0] === 'ops@example.com', body.from);
   check('state records the setup email', !!s1?.setupTs);
   calls.length = 0;
   const s2 = await muted(() => runAlerts(env, { now: now + 60000, tracked: T, hubs: healthy, modelGeneratedAt: fresh, state: s1, ua: 'test' }));
@@ -123,6 +142,15 @@ try {
   globalThis.fetch = mockFetch(200);
   const s6 = await muted(() => runAlerts({}, { now, tracked: T, hubs: downHubs, modelGeneratedAt: fresh, state: null, ua: 'test' }));
   check('unconfigured: no network calls, no state', calls.length === 0 && s6 === null);
+
+  calls.length = 0;
+  globalThis.fetch = mockFetch(200);
+  resetDatabaseStreak();
+  const sentDb = await muted(() => alertDatabase(env, "D1_ERROR: Your account has exceeded D1's free tier daily row write limit.", 'test', now));
+  check('database alert is sent through Resend with a daily key', sentDb === true && calls.length === 1 && calls[0].init.headers['Idempotency-Key'] === 'naventra-db-2026-10-22');
+  calls.length = 0;
+  const unsent = await muted(() => alertDatabase({}, 'D1_ERROR: limit exceeded', 'test', now));
+  check('database alert needs the Resend secrets', unsent === false && calls.length === 0);
 
   calls.length = 0;
   globalThis.fetch = async (url, init) => { calls.push({ url: String(url), init }); return new Response(null, { status: 204 }); };

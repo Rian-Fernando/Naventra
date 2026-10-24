@@ -80,6 +80,31 @@ export function etaBiasSec(model) {
   return etaBiasFrom(model.eta);
 }
 
+// ---- open (locked, not yet graded) predictions ------------------------------
+// All of an airport's open predictions live in ONE row of the state table
+// (`open:<icao>`, JSON { arr: {id: rec}, dep: {id: rec} }), written at most once
+// per tick. They used to be one D1 row each, refreshed every few minutes —
+// ~63k rows written a day, which on 2026-10-24 pushed the account past D1's
+// free 100k/day write limit and stopped the tracker until midnight UTC.
+// Returns { state, raw } (raw = the stored JSON, to skip unchanged writes).
+export async function loadOpenState(db, icao) {
+  const row = await db.prepare('SELECT data_json FROM state WHERE icao=?').bind(`open:${icao}`).first();
+  if (!row) return null;
+  try { return { state: JSON.parse(row.data_json), raw: row.data_json }; } catch { return null; }
+}
+
+export function saveOpenStateStmt(db, icao, json) {
+  return db.prepare(
+    `INSERT INTO state (icao, data_json, updated_ts) VALUES (?1,?2,?3)
+     ON CONFLICT(icao) DO UPDATE SET data_json=?2, updated_ts=?3`
+  ).bind(`open:${icao}`, json, Date.now());
+}
+
+// One-time migration: the old per-row predictions for this airport.
+export function clearLegacyOpenStmt(db, icao) {
+  return db.prepare('DELETE FROM predictions WHERE icao=?').bind(icao);
+}
+
 export async function loadOpen(db, icao) {
   const { results } = await db.prepare('SELECT * FROM predictions WHERE icao=?').bind(icao).all();
   const map = new Map();
@@ -94,14 +119,6 @@ export async function loadOpen(db, icao) {
   return map;
 }
 
-export function upsertOpenStmt(db, icao, o) {
-  return db.prepare(
-    `INSERT INTO predictions (id, icao, callsign, lock_ts, lock_oct, pred_runway, raw_eta_ts, pred_eta_ts, last_seen, sample_json, features_json)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
-     ON CONFLICT(id) DO UPDATE SET last_seen=?9, sample_json=?10`
-  ).bind(o.id, icao, o.callsign, o.lockTs, o.lockOct, o.predRunway, o.rawEtaTs, o.predEtaTs, o.lastSeen,
-    o.sample ? JSON.stringify(o.sample) : null, o.features ? JSON.stringify(o.features) : null);
-}
 
 // Append one labeled training row.
 export function recordSampleStmt(db, s) {
@@ -194,10 +211,6 @@ export function saveStateStmt(db, key, obj) {
   ).bind(key, JSON.stringify(obj), Date.now());
 }
 
-export function deleteOpenStmt(db, id) {
-  return db.prepare('DELETE FROM predictions WHERE id=?').bind(id);
-}
-
 export function recordLandingStmt(db, entry) {
   const correct = entry.items.filter((i) => i.ok).length;
   return db.prepare(
@@ -229,9 +242,19 @@ export async function getScorecard(db, icao) {
     totalN += n; totalC += c;
   }
 
-  const openRow = icao
-    ? await db.prepare('SELECT COUNT(*) k FROM predictions WHERE icao=?').bind(icao).first()
-    : await db.prepare('SELECT COUNT(*) k FROM predictions').first();
+  // Open predictions now live in one JSON row per hub; each tick's heartbeat
+  // records how many there are, so read the count from there.
+  const tick = await loadTickState(db);
+  const hubs = tick?.hubs || {};
+  const counted = Object.values(hubs).filter((h) => typeof h?.open === 'number');
+  let openCount = icao ? hubs[icao]?.open : (counted.length ? counted.reduce((a, h) => a + h.open, 0) : undefined);
+  if (typeof openCount !== 'number') {
+    // Heartbeat from before the one-row change: count the legacy rows.
+    const row = icao
+      ? await db.prepare('SELECT COUNT(*) k FROM predictions WHERE icao=?').bind(icao).first()
+      : await db.prepare('SELECT COUNT(*) k FROM predictions').first();
+    openCount = row?.k || 0;
+  }
 
   // Pull landings + the training-row count from the tiny model table (one row per
   // hub) so the scorecard never scans the large samples table on the hot path.
@@ -267,7 +290,7 @@ export async function getScorecard(db, icao) {
 
   return {
     allTime: { n: totalN, pct: totalN ? Math.round((totalC / totalN) * 100) : null, byCat },
-    openCount: openRow?.k || 0,
+    openCount,
     learned,
     samples: sampleTotal,
     recent24: r24 && r24.t ? { n: r24.t, pct: Math.round((r24.c / r24.t) * 100) } : null,

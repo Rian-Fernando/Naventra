@@ -64,38 +64,46 @@ pure-JS inference in the Worker and browser, still $0 and keyless.
 
 ## Email alerts (free, via Resend)
 
-The worker emails you when something changes — never per tick:
+The worker emails you when something changes — never per tick. Every alert comes
+from **`Naventra Alerts <naventra-alerts@rianfernando.com>`** with a subject of the
+form **`[Naventra] STATUS — detail`**, a convention meant to be reused by other
+projects (`<project>-alerts@rianfernando.com`, `[<Project>] …`) so one inbox can
+sort them all:
 
-| Email | When |
+| Subject starts with | When |
 |---|---|
-| **Naventra alerts are on** | once, the first minute alerts are configured (proves it works) |
-| **No live data at …** | a hub has had no successful tick for 2 hours; repeats every 24 h while down |
-| **Live data restored** | every hub is live again, with the outage length |
-| **Model retrain hasn't run** | `public/model.json` is over 10 days old (GitHub skipped the weekly schedule); weekly |
+| `[Naventra] ALERTS ON` | once, the first minute alerts are configured (proves the pipe works) |
+| `[Naventra] DOWN` | a hub hasn't completed a tick for 2 hours; `STILL DOWN` every 24 h after |
+| `[Naventra] RECOVERED` | every hub is updating again, with the outage length |
+| `[Naventra] DATABASE` | D1 refused this minute's writes (e.g. the free daily limit) — at once, max one a day |
+| `[Naventra] STALE MODEL` | `public/model.json` is over 10 days old (the weekly retrain stopped); weekly |
 
 Setup (secrets live in Cloudflare, never in the repo):
 
-1. In Resend → **API Keys** → *Create API key*: permission **Sending access**,
-   domain **rianfernando.com** (already verified there).
+1. In Resend → **API Keys** → *Create API key*: name **`naventra-alerts`**, permission
+   **Sending access**, domain **rianfernando.com**. (Any address on a verified domain can
+   send — no mailbox or DNS change is needed for `naventra-alerts@`.)
 2. `cd worker && npx wrangler secret put RESEND_API_KEY` and paste the key.
-3. `npx wrangler secret put ALERT_TO` — the address alerts go to.
-4. Optional: a different sender — add `ALERT_FROM = "Name <addr@your-verified-domain>"`
-   under `[vars]` in `wrangler.toml` (default `Naventra Alerts <alerts@rianfernando.com>`).
+3. `npx wrangler secret put ALERT_TO` — the inbox alerts go to.
+4. Optional: a different sender — `ALERT_FROM = "Name <addr@your-verified-domain>"` under
+   `[vars]` in `wrangler.toml`.
 
-Within a minute the confirmation email arrives; `/api/health` shows `"alerts": true`.
-Resend's free tier is 3,000 emails/month; this sends a handful. Each email carries
-an `Idempotency-Key`, so a retried tick can't send it twice; a refused send is
-retried after 30 minutes, not every minute.
+Within a minute the `ALERTS ON` email arrives and `/api/health` shows `"alerts": true`.
+Resend's free tier (3,000 emails/month, shared by every key on the account) is plenty —
+this sends a handful. Each email carries an `Idempotency-Key`, so a retried tick can't
+send it twice; a refused send is retried after 30 minutes, not every minute.
 
 **Optional self-healing retrain.** With a fine-grained GitHub token (*Repository
 access*: only this repo; *Permissions*: **Actions → Read and write**, nothing else)
 stored as `npx wrangler secret put GITHUB_DISPATCH_TOKEN`, a model more than 8 days
 old makes the worker run the "Train model" workflow itself (at most once a day).
 
-**Outside watchdog.** The worker can't report its own death (a bad deploy, D1 over
-its limits, a stopped cron), so `.github/workflows/watchdog.yml` reads
-`/api/health` from GitHub every hour and fails — which emails the repo owner — if
-the worker is unreachable or hasn't ticked in 20 minutes. No secrets needed.
+**Outside watchdog.** The worker can't report its own death (a bad deploy, a stopped
+cron), so `.github/workflows/watchdog.yml` reads `/api/health` from GitHub and fails —
+which emails the repo owner — if the worker is unreachable or hasn't ticked in 20
+minutes. It is scheduled hourly, but GitHub runs scheduled jobs on a best-effort basis
+(in practice every 3–5 hours). For minute-level outside checks, a free UptimeRobot HTTP
+monitor on `/api/health` works too: the endpoint returns **503** whenever a hub is stale.
 
 ## The trained model updates itself
 
@@ -148,10 +156,14 @@ Point the frontend at it: `VITE_TRACKER_URL=http://localhost:8787 npm run dev`
 
 - Workers: 100k requests/day. The cron is 1,440 invocations/day, each making
   ~7 subrequests (3 ADS-B, 3 METAR, at most one model check). Comfortable.
-- D1: 5 GB storage, 5M rows read + 100k rows written/day. Measured Oct 2026:
-  ~0.3M reads and ~20k writes/day. Departure records are refreshed at most every
-  2.5 min and only for aircraft on the field, and the scorecard reads per-hub
-  counters instead of scanning the samples table.
+- D1: 5 GB storage, 5M rows read + **100k rows written per day per account** (every
+  D1 database on the Cloudflare account shares it; resets at midnight UTC). Index
+  entries count as extra rows written. On 2026-10-24 the tracker — now fed live data
+  every minute — reached 102k/day and was paused for the rest of the day. Since then
+  each hub's open predictions live in **one** state row (one write per hub per minute,
+  at most) instead of one row per flight, and two unused indexes are gone: about
+  40k rows written/day and ~70k rows read. A `[Naventra] DATABASE` email arrives at
+  once if the limit is ever hit again.
 
 ## Optional: custom API domain
 

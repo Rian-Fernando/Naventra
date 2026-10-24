@@ -6,6 +6,21 @@ All notable changes to Naventra are documented here. The format is based on
 
 ## [Unreleased]
 
+### Tracker stays inside D1's free write limit
+- On 2026-10-24 the tracker — now fed live data every minute — wrote 102k rows in a day
+  and hit D1's free 100k/day limit (shared by the whole Cloudflare account), pausing it
+  until midnight UTC. Each hub's open predictions now live in one state row (one write
+  per hub per minute, at most) instead of one row per flight, which also removes an
+  arrival-refresh throttle that never throttled (it compared object identity). Two
+  unused `samples` indexes are dropped (migration 004). About 40k rows written/day.
+- A `[Naventra] DATABASE` alert goes out at once (max one a day) if D1 refuses writes.
+
+### Alerts: one sender per project
+- Alerts now come from `Naventra Alerts <naventra-alerts@rianfernando.com>` with subjects
+  `[Naventra] STATUS — detail` (ALERTS ON, DOWN, STILL DOWN, RECOVERED, DATABASE,
+  STALE MODEL) — a format other projects can reuse so one inbox filter per sender works.
+- Closed four Dependabot PRs that main had already superseded.
+
 ### Departure runways — read off traffic, chosen by results
 - Departures were dealt round-robin across every runway arrivals weren't using (JFK 26%,
   LAX 38% correct). Three predictors now name a runway for every taxiing flight — the

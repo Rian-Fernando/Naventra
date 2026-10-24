@@ -9,7 +9,7 @@
 import { tickAirport, TRACKED, UA } from './tracker.js';
 import { getScorecard, getModels, datasetCount, datasetRows, loadTickState, saveTickStmt, loadStates, saveStateStmt, ALERT_KEY } from './store.js';
 import { trainedModel, modelInfo } from './modelSource.js';
-import { runAlerts, alertsConfigured } from './alerts.js';
+import { runAlerts, alertsConfigured, alertDatabase, resetDatabaseStreak } from './alerts.js';
 
 // A hub is 'stale' if it hasn't completed a successful tick in this long.
 const STALE_MS = 10 * 60 * 1000;
@@ -49,8 +49,8 @@ export default {
         for (const r of results) {
           const was = prev.hubs?.[r.icao] || {};
           hubs[r.icao] = r.error
-            ? { ok: false, error: r.error.slice(0, 200), lastOkTs: was.lastOkTs || null, tracked: was.tracked ?? null, config: was.config || null }
-            : { ok: true, lastOkTs: now, tracked: r.tracked, graded: r.graded, locked: r.locked, source: r.source, config: r.config };
+            ? { ok: false, error: r.error.slice(0, 200), lastOkTs: was.lastOkTs || null, tracked: was.tracked ?? null, config: was.config || null, open: was.open ?? null }
+            : { ok: true, lastOkTs: now, tracked: r.tracked, graded: r.graded, locked: r.locked, source: r.source, config: r.config, open: r.open };
         }
         const stmts = [saveTickStmt(env.DB, { ts: now, hubs })];
         const info = modelInfo();
@@ -61,7 +61,13 @@ export default {
         });
         if (alertState) stmts.push(saveStateStmt(env.DB, ALERT_KEY, alertState));
         await env.DB.batch(stmts);
-      } catch (e) { console.error('heartbeat failed', e); }
+        resetDatabaseStreak();
+      } catch (e) {
+        console.error('heartbeat failed', e);
+        // The database itself is refusing work (e.g. the free daily write limit):
+        // say so now rather than two hours from now. At most one email a day.
+        await alertDatabase(env, String(e?.message || e), UA).catch((err) => console.error('db alert failed', err));
+      }
     })());
   },
 
