@@ -11,9 +11,26 @@ import { wakeCat, wakeSepNm, wakeDepartureSepSec, WAKE_LABEL } from './wake.js';
 
 export const PHASES = ['GROUND', 'DEPARTURE', 'ENROUTE', 'ARRIVAL', 'APPROACH', 'FINAL'];
 
-// Ground traffic farther than this from the field reference is at another
-// airport inside the radar range, not on this one.
-export const ON_FIELD_NM = 3;
+// How far from the field reference this airport's movement area reaches: its
+// furthest runway end plus a margin for ramps and holding bays (Amsterdam's
+// Polderbaan ends 3.8 nm out; Heathrow's furthest end is 1.2 nm). Ground
+// traffic beyond it is at another airport inside the radar range.
+const fieldRadiusCache = new Map();
+export function fieldRadiusNm(airport) {
+  let r = fieldRadiusCache.get(airport.icao);
+  if (r != null) return r;
+  const offsets = stripOffsets(airport);
+  r = 0;
+  for (const rwy of airport.runways) {
+    const mid = offsets.get(rwy.id) || { offX: 0, offY: 0 };
+    const half = rwy.lenFt / 6076.12 / 2;
+    const h = rwy.trueHdg * (Math.PI / 180);
+    for (const k of [-1, 1]) r = Math.max(r, Math.hypot(mid.offX + k * half * Math.sin(h), mid.offY + k * half * Math.cos(h)));
+  }
+  r += 0.7;
+  fieldRadiusCache.set(airport.icao, r);
+  return r;
+}
 
 // Deterministic small hash → [0,1). Used to spread proposed stands across the
 // apron so they don't jitter between ticks.
@@ -234,6 +251,7 @@ export function allocateRunways(airport, wx, observed = null, observedDep = null
 export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = () => 0, depPlanner = null) {
   const arrRwys = runways.filter((r) => r.role.includes('ARR'));
   const fieldElev = airport.elevFt;
+  const fieldR = fieldRadiusNm(airport);
 
   const annotated = aircraft.map((ac) => {
     const d = distNm(ac.lat, ac.lon, airport.lat, airport.lon);
@@ -255,7 +273,9 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
     else if (agl != null && d < 16 && agl < 7000 && closing > 0 && ac.vs < 300) phase = 'APPROACH';
     // Above ~20k AGL inside the ring it's an overflight, not TRACON traffic.
     else if (agl != null && agl < 20000 && d < 45 && closing > 0.3 && (ac.vs < -250 || agl < 12000)) phase = 'ARRIVAL';
-    else if (agl != null && d < 30 && closing < -0.2 && (ac.vs > 300 || agl < 10000)) phase = 'DEPARTURE';
+    // Leaving the area and not descending: a descending aircraft moving away
+    // (an arrival on its downwind leg) is not a departure.
+    else if (agl != null && d < 30 && closing < -0.2 && (ac.vs > 300 || (agl < 10000 && ac.vs > -300))) phase = 'DEPARTURE';
 
     // Inbound ETA models the deceleration to approach speed instead of
     // assuming current ground speed holds to the threshold.
@@ -263,7 +283,9 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
     const etaMin = ac.gs > 40
       ? (d / (inboundPhase ? Math.max(95, (ac.gs + 145) / 2) : ac.gs)) * 60
       : null;
-    return { ...ac, distNm: d, brgFromField: (brgTo + 180) % 360, agl, phase, etaMin, closing, wake: wakeCat(ac.type, ac.category) };
+    // On this airport's surface (not parked at a neighbouring field in range).
+    const atField = phase === 'GROUND' && d <= fieldR;
+    return { ...ac, distNm: d, brgFromField: (brgTo + 180) % 360, agl, phase, etaMin, closing, atField, wake: wakeCat(ac.type, ac.category) };
   });
 
   // Arrival sequencing: order the inbound flows by ETA and distribute across
@@ -327,9 +349,10 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
     .forEach((a, i) => {
       // On the ground somewhere else in range (Newark, Teterboro, Long Beach…):
       // none of this airport's runways apply.
-      if (a.phase === 'GROUND' && a.distNm > ON_FIELD_NM) { a.runway = null; return; }
+      if (a.phase === 'GROUND' && !a.atField) { a.runway = null; return; }
       // Climbing out: the runway it is visibly departing from, when it can be told.
       const flown = a.phase === 'DEPARTURE' ? departureEnd(a, airport) : null;
+      if (flown) a.depFromField = true; // seen leaving one of this airport's runways
       const plan = !flown && depPlanner && a.phase === 'GROUND' ? depPlanner(a, runways) : null;
       if (plan) a.depPlan = plan;
       a.runway = flown || plan?.end || (depRwys.length ? depRwys[i % depRwys.length].activeEnd : null);
@@ -355,7 +378,7 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
   const occupied = new Set(Object.values(gateMap));
   let all = null; // built once per pass, only if someone needs a stand
   for (const a of annotated) {
-    const wantsStand = a.phase === 'APPROACH' || a.phase === 'FINAL' || (a.phase === 'GROUND' && a.distNm <= ON_FIELD_NM);
+    const wantsStand = a.phase === 'APPROACH' || a.phase === 'FINAL' || a.atField;
     if (wantsStand && !gateMap[a.id]) {
       all = all || airport.terminals.flatMap((t) => t.gates.map((g) => `${t.name}·${g}`));
       const start = Math.floor(hash01(a.id) * all.length);
@@ -583,7 +606,7 @@ export function computeKpis(aircraft, conflicts) {
     tracked: aircraft.length,
     arrivals: aircraft.filter((a) => ['ARRIVAL', 'APPROACH', 'FINAL'].includes(a.phase)).length,
     departures: aircraft.filter((a) => a.phase === 'DEPARTURE').length,
-    ground: aircraft.filter((a) => a.phase === 'GROUND').length,
+    ground: aircraft.filter((a) => a.atField).length, // this airport's surface only
     conflicts: conflicts.length,
   };
 }

@@ -68,6 +68,7 @@ export function useAtcSystem() {
     globalPrior: null,
     opsLog: [],
     depFlow: [],     // recent climb-outs [id, runwayEnd, ts] — the observed departure flow
+    seenDep: new Map(), // aircraft id → when we watched it take off from this field
     depModel: null,  // the 24/7 tracker's learned departure experts (tracked hubs)
   });
 
@@ -101,6 +102,13 @@ export function useAtcSystem() {
     const depW = flowWeights(r.depFlow, now);
     const rwys = observed.size || depW.size ? allocateRunways(ap, r.weather, observed.size ? observed : null, depW) : baseRwys;
     annotated = annotateAircraft(tracks, ap, rwys, r.gateMap, priorFn, makeDeparturePlanner(ap, depW, r.depModel));
+    // Keep "left from here" on flights we watched take off, after they climb
+    // out of the window where the runway can be read off the track.
+    for (const a of annotated) {
+      if (a.depFromField) r.seenDep.set(a.id, now);
+      else if (a.phase !== 'GROUND' && now - (r.seenDep.get(a.id) ?? -Infinity) < 45 * 60000) a.depFromField = true;
+    }
+    if (r.seenDep.size > 400) for (const [id, t] of r.seenDep) if (now - t > 45 * 60000) r.seenDep.delete(id);
     r.runways = rwys;
     setRunways(rwys);
     const confl = detectConflicts(annotated, ap);
@@ -148,11 +156,15 @@ export function useAtcSystem() {
 
     r.prevAnnotated = annotated;
     r.prevConflictIds = new Set(confl.map((c) => c.id));
-    // Prefetch routes for committed inbound + outbound so strips + detail card
-    // can show origin/destination (throttled + cached inside route.js).
+    // Prefetch routes so strips + detail card can show origin/destination
+    // (paced + cached inside route.js): everything on the strips (arrivals,
+    // departures, this field's surface), nearest first, then cruise traffic in
+    // the inner sector.
     prefetchRoutes(
       annotated
-        .filter((x) => ['ARRIVAL', 'APPROACH', 'FINAL', 'DEPARTURE'].includes(x.phase))
+        .filter((x) => ['ARRIVAL', 'APPROACH', 'FINAL', 'DEPARTURE'].includes(x.phase) || x.atField
+          || (x.phase === 'ENROUTE' && x.distNm < 25))
+        .sort((p, q) => (p.phase === 'ENROUTE') - (q.phase === 'ENROUTE') || p.distNm - q.distNm)
         .map((x) => x.callsign)
     );
     setAircraft(annotated);
@@ -176,6 +188,7 @@ export function useAtcSystem() {
     r.opsLog = [];
     r.depFlow = [];
     r.depModel = null;
+    r.seenDep = new Map();
     setAircraft([]);
     setConflicts([]);
     setDecisions([]);

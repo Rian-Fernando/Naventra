@@ -3,6 +3,7 @@ import { PlaneLanding, PlaneTakeoff, Plane } from 'lucide-react';
 import { radioName } from '../engine/atc.js';
 import { distNm } from '../lib/geo.js';
 import { fetchRoute, getRoute } from '../lib/route.js';
+import { describeRoute, sameAirport, isAirlineCallsign } from '../lib/routeMatch.js';
 import { typicalSeats } from '../lib/aircraftMeta.js';
 import { WAKE_LABEL } from '../engine/wake.js';
 import { useSettings } from '../hooks/useSettings.jsx';
@@ -18,17 +19,14 @@ function clockZ(msFromNow) {
   return new Date(Date.now() + msFromNow).toISOString().slice(11, 16) + 'Z';
 }
 
-const epMatches = (ep, ap) => !!ep && !!ap && (ep.icao === ap.icao || ep.iata === ap.iata);
-const apAsEp = (ap) => ({ iata: ap.iata, icao: ap.icao, name: ap.name, city: ap.city.split(',')[0], lat: ap.lat, lon: ap.lon });
-
 // Floating card over the radar for the selected track.
 export default function AircraftDetail({ aircraft, airport, onClose }) {
-  const [route, setRoute] = useState(null);
+  const [route, setRoute] = useState(undefined); // undefined = not looked up yet
   const { settings } = useSettings();
   const cs = aircraft?.callsign;
 
   useEffect(() => {
-    if (!cs) { setRoute(null); return undefined; }
+    if (!cs) { setRoute(undefined); return undefined; }
     setRoute(getRoute(cs));
     let live = true;
     fetchRoute(cs).then((r) => { if (live) setRoute(r); });
@@ -39,20 +37,12 @@ export default function AircraftDetail({ aircraft, airport, onClose }) {
   const a = aircraft;
   const seats = typicalSeats(a.type);
 
-  // Reconcile the scheduled route with what the aircraft is actually doing
-  // (callsigns get reused across legs). Only trust the schedule when the
-  // relevant endpoint matches this facility; enroute overflights are shown as-is.
-  const inbound = ['ARRIVAL', 'APPROACH', 'FINAL'].includes(a.phase) || (a.phase === 'GROUND' && a.gate);
-  let from = null, to = null, eteTo = null;
-  if (route) {
-    if (a.phase === 'DEPARTURE' && epMatches(route.from, airport)) {
-      from = apAsEp(airport); to = route.to; eteTo = route.to;
-    } else if (inbound && epMatches(route.to, airport)) {
-      from = route.from; to = apAsEp(airport);
-    } else if (a.phase === 'ENROUTE') {
-      from = route.from; to = route.to; eteTo = route.to;
-    }
-  }
+  // The published route only if it fits where the aircraft actually is
+  // (flight numbers get reused); otherwise whatever end the track shows, plus
+  // a plain reason for what's missing. See src/lib/routeMatch.js.
+  const rd = describeRoute(route, a, airport);
+  const { from, to, via } = rd;
+  const eteTo = rd.source === 'route' && to && !sameAirport(to, airport) ? to : null;
 
   // Time/distance to the actual destination when heading there (dep / enroute).
   let ete = null, distToDest = null, arrClock = null;
@@ -91,21 +81,28 @@ export default function AircraftDetail({ aircraft, airport, onClose }) {
         <button onClick={onClose} title="Deselect">✕</button>
       </div>
       <div className="sel-sub">
-        {route?.airline || radioName(a.callsign)}{a.desc ? ` · ${a.desc}` : a.type ? ` · ${a.type}` : ''}
+        {rd.airline || radioName(a.callsign)}{a.desc ? ` · ${a.desc}` : a.type ? ` · ${a.type}` : ''}
       </div>
 
-      {from && to && (
+      {(from || to) && (
         <div className="sel-route">
           <div className="sel-route-line">
-            <span className="ap"><PlaneTakeoff size={11} /> {from.iata || '—'}</span>
+            <span className="ap"><PlaneTakeoff size={11} /> {from ? from.iata || from.icao : '—'}</span>
             <span className="arrow">→</span>
-            <span className="ap"><PlaneLanding size={11} /> {to.iata || '—'}</span>
+            {via && <><span className="ap">{via.iata || via.icao}</span><span className="arrow">→</span></>}
+            <span className="ap"><PlaneLanding size={11} /> {to ? to.iata || to.icao : '—'}</span>
           </div>
-          <div className="sel-route-names">{from.city || from.name} — {to.city || to.name}</div>
+          <div className="sel-route-names">
+            {from ? from.city || from.name : 'origin not published'}{via ? ` — ${via.city || via.name}` : ''} — {to ? to.city || to.name : 'destination not published'}
+            {rd.source === 'seen' && <> · {to ? `seen on its approach to ${to.iata || to.icao}` : `seen climbing out of ${from.iata || from.icao}`}</>}
+          </div>
         </div>
       )}
-      {!from && route === null && cs && (
-        <div className="sel-route sel-route-none"><Plane size={11} /> route not on file</div>
+      {rd.source !== 'route' && rd.note && (
+        <div className="sel-route sel-route-none"><Plane size={11} /> {rd.note}</div>
+      )}
+      {rd.source !== 'route' && route === undefined && isAirlineCallsign(cs) && (
+        <div className="sel-route sel-route-none"><Plane size={11} /> looking up route…</div>
       )}
 
       <div className="sel-grid">

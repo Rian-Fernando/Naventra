@@ -28,6 +28,8 @@ jobs:
         run: node scripts/test-integrity.mjs
       - name: Tracker tests (alerts, departure experts, dataset paging)
         run: node scripts/test-tracker.mjs
+      - name: Route display tests (published routes only when they fit)
+        run: node scripts/test-routes.mjs
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"

@@ -6,6 +6,30 @@ All notable changes to Naventra are documented here. The format is based on
 
 ## [Unreleased]
 
+### Where flights come from and go — shown when it's real
+- Only 4% of JFK's strips showed an origin or destination. Measured on live traffic, the
+  reasons were: private/GA flights (no published routes), stale routes for reused flight
+  numbers, flights to LaGuardia/Newark/Teterboro hidden by a JFK-only check, and taxiing
+  departures treated as arrivals.
+- A published route (adsbdb) is now shown only when it fits where the aircraft is: on the
+  ground at one of its airports; climbing with its origin within reach of its altitude,
+  descending with its destination within reach; at cruise inside a corridor around the
+  great circle, heading the right way. What the engine already knows wins (on this field,
+  on final here, seen climbing off our runway). Multi-leg routes pick the right leg.
+- When no route fits, the end the track shows is still given (`→ JFK` on final, `JFK →`
+  after watching it take off, `LGA →` climbing out over LaGuardia), and the detail card
+  says plainly why the rest is missing. Neighbouring-airport traffic reads as such
+  (`SDF → LGA`) and no longer gets a JFK runway, stand or sequence on its strip.
+- Strips now show the full route (`BOS → JFK`); routes are prefetched for everything on
+  the strips, nearest first. JFK 4% → ~23–28% of strips, Heathrow ~64–72%; the rest is
+  mostly private/GA traffic, which has no published routes.
+- The Ground tab and KPI count only this airport's surface (not aircraft parked at
+  neighbouring fields), using each airport's real runway extent — Amsterdam's Polderbaan
+  ends 3.8 nm out. A descending aircraft moving away from the field (an arrival on its
+  downwind leg) is no longer called a departure.
+- Route data is credited to its authors and only displayed — never stored in the
+  tracker or the dataset, per adsbdb's terms.
+
 ### Tracker stays inside D1's free write limit
 - On 2026-10-24 the tracker — now fed live data every minute — wrote 102k rows in a day
   and hit D1's free 100k/day limit (shared by the whole Cloudflare account), pausing it

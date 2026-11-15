@@ -11,7 +11,6 @@
 
 import { octantOf, recordLanding, recordEtaError, etaBiasSec, learnedLandings } from './learning.js';
 import { CATEGORIES, classifyLandingRunway, gradeItems } from './grading.js';
-import { ON_FIELD_NM } from './atc.js';
 
 export { CATEGORIES };
 const STORE_KEY = 'nv-scorecard-v1';
@@ -60,7 +59,7 @@ export class PredictionTracker {
           // Lock the planned departure runway while the flight is still on the
           // ground (moving — parked stands churn too much noise). A flight we
           // just watched land is taxiing IN, not out.
-          if (lockEnabled && ac.phase === 'GROUND' && ac.runway && ac.distNm <= ON_FIELD_NM && ac.gs > 5 && ac.gs < 60 && !this.open.has(ac.id) && !this.landed.has(ac.id)) {
+          if (lockEnabled && ac.atField && ac.runway && ac.gs > 5 && ac.gs < 60 && !this.open.has(ac.id) && !this.landed.has(ac.id)) {
             this.openDep.set(ac.id, { callsign: ac.callsign, predRunway: ac.runway, by: ac.depPlan?.by || null, plan: ac.depPlan || null, lockTs: now, lastSeen: now, moved: now, live });
           }
           continue;

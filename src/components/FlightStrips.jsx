@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PlaneLanding, PlaneTakeoff, CircleDot } from 'lucide-react';
 import { getRoute } from '../lib/route.js';
+import { describeRoute, sameAirport } from '../lib/routeMatch.js';
 import { emergencyInfo } from '../lib/filters.js';
 import { WAKE_LABEL } from '../engine/wake.js';
 import { useSettings } from '../hooks/useSettings.jsx';
@@ -9,10 +10,37 @@ import { fmtAltScope, fmtSpeed, speedUnitLabel, convDist, distUnitLabel } from '
 const TABS = [
   { key: 'ARR', label: 'Arrivals', icon: PlaneLanding, phases: ['ARRIVAL', 'APPROACH', 'FINAL'] },
   { key: 'DEP', label: 'Departures', icon: PlaneTakeoff, phases: ['DEPARTURE'] },
-  { key: 'GND', label: 'Ground', icon: CircleDot, phases: ['GROUND'] },
+  // This airport's surface only — not aircraft parked at neighbouring fields.
+  { key: 'GND', label: 'Ground', icon: CircleDot, phases: ['GROUND'], fieldOnly: true },
 ];
+const inTab = (t, a) => t.phases.includes(a.phase) && (!t.fieldOnly || a.atField);
 
-const epMatches = (ep, ap) => !!ep && !!ap && (ep.icao === ap.icao || ep.iata === ap.iata);
+const code = (ep) => (ep ? ep.iata || ep.icao : '');
+const place = (ep) => (ep ? ep.city || ep.name || code(ep) : '');
+
+// Is this strip really another airport's traffic? An "arrival" whose route ends
+// at LaGuardia, or a "departure" seen leaving Newark, is just passing through
+// this airport's airspace.
+function isElsewhere(rd, airport, tab) {
+  const away = (ep) => !!ep && !sameAirport(ep, airport);
+  if (tab === 'ARR') return away(rd.to) || (!rd.to && away(rd.from));
+  if (tab === 'DEP') return away(rd.from) || (!rd.from && away(rd.to));
+  return false;
+}
+
+// "BOS → JFK", "BOS → JFK → MIA", or just the end the track shows ("→ JFK").
+function RouteTag({ rd, airport, tab, elsewhere }) {
+  if (!rd.from && !rd.to) return null;
+  const title = rd.source === 'seen'
+    ? (rd.to ? `Landing at ${place(rd.to)} — seen on its approach. No published route fits this flight.` : `Departed ${place(rd.from)} — seen climbing out. No published route fits this flight.`)
+    : `${place(rd.from)}${rd.via ? ` → ${place(rd.via)}` : ''} → ${place(rd.to)}`;
+  const why = elsewhere ? ` — ${code(tab === 'ARR' ? rd.to || rd.from : rd.from || rd.to)} traffic passing through ${airport.iata}'s airspace, not ${tab === 'ARR' ? 'landing' : 'departing'} here` : '';
+  return (
+    <span className={`route ${rd.source === 'seen' ? 'seen' : ''} ${elsewhere ? 'elsewhere' : ''}`} title={title + why}>
+      {rd.from ? code(rd.from) : ''}{rd.via ? ` → ${code(rd.via)}` : ''}{' → '}{rd.to ? code(rd.to) : ''}
+    </span>
+  );
+}
 
 export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect, airline, airport }) {
   const [tab, setTab] = useState('ARR');
@@ -21,7 +49,7 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
   const conflictIds = new Set(conflicts.flatMap((c) => [c.a.id, c.b.id]));
 
   const rows = aircraft
-    .filter((a) => active.phases.includes(a.phase))
+    .filter((a) => inTab(active, a))
     .filter((a) => !airline || (a.callsign || '').slice(0, 3).toUpperCase() === airline)
     // emergencies float to the top, then normal sequence / distance order
     .sort((a, b) => (emergencyInfo(b) ? 1 : 0) - (emergencyInfo(a) ? 1 : 0)
@@ -36,7 +64,7 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
       </div>
       <div className="strip-tabs">
         {TABS.map((t) => {
-          const n = aircraft.filter((a) => t.phases.includes(a.phase)).length;
+          const n = aircraft.filter((a) => inTab(t, a)).length;
           return (
             <button key={t.key} className={tab === t.key ? 'on' : ''} onClick={() => setTab(t.key)}>
               {t.label} <span className="n">{n}</span>
@@ -51,13 +79,11 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
           </div>
         )}
         {rows.map((a) => {
-          const rt = getRoute(a.callsign);
+          // Published route, only if it fits where this aircraft actually is
+          // (flight numbers get reused); else whatever end the track shows.
+          const rd = describeRoute(getRoute(a.callsign), a, airport);
+          const elsewhere = isElsewhere(rd, airport, tab);
           const em = emergencyInfo(a);
-          // Only trust the scheduled route when the endpoint at THIS field matches
-          // (callsigns get reused): arrivals show origin, departures show dest.
-          const endpoint = rt && (tab === 'DEP'
-            ? (epMatches(rt.from, airport) ? rt.to : null)
-            : (epMatches(rt.to, airport) ? rt.from : null));
           return (
           <div
             key={a.id}
@@ -69,8 +95,8 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
               <span className="strip-type">{a.type || '—'}</span>
               {(a.wake === 'H' || a.wake === 'J') && <span className={`wk wk-${a.wake}`}>{WAKE_LABEL[a.wake]}</span>}
               {em && <span className="emg">⚠ {em.label}{a.squawk ? ` ${a.squawk}` : ''}</span>}
-              {a.seq != null && <span className="strip-seq">#{a.seq}</span>}
-              <span className={`phase-chip phase-${a.phase}`} style={{ marginLeft: a.seq == null ? 'auto' : 0 }}>
+              {a.seq != null && !elsewhere && <span className="strip-seq">#{a.seq}</span>}
+              <span className={`phase-chip phase-${a.phase}`} style={{ marginLeft: a.seq == null || elsewhere ? 'auto' : 0 }}>
                 {a.phase}
               </span>
             </div>
@@ -83,12 +109,11 @@ export default function FlightStrips({ aircraft, conflicts, selectedId, onSelect
               {a.reqDepGapSec && <span className="spc" title={`Wake-on-departure spacing behind ${a.depLeaderCs}`}>◂<b>{Math.round(a.reqDepGapSec / 60 * 10) / 10}</b>min</span>}
             </div>
             <div className="strip-bot">
-              {a.runway && <span className="rwy">RWY {a.runway}</span>}
-              {a.gate && <span className="gate" title="Stand proposed by the engine — real gate assignments aren't public data">STAND {a.gate}?</span>}
-              {endpoint && (
-                <span className="route">{tab === 'DEP' ? '→' : '←'} {endpoint.iata || endpoint.city}</span>
-              )}
-              {!endpoint && a.squawk && <span>SQ {a.squawk}</span>}
+              {/* Another airport's traffic gets no runway or stand here. */}
+              {a.runway && !elsewhere && <span className="rwy">RWY {a.runway}</span>}
+              {a.gate && !elsewhere && <span className="gate" title="Stand proposed by the engine — real gate assignments aren't public data">STAND {a.gate}?</span>}
+              <RouteTag rd={rd} airport={airport} tab={tab} elsewhere={elsewhere} />
+              {!rd.from && !rd.to && a.squawk && <span>SQ {a.squawk}</span>}
             </div>
           </div>
           );

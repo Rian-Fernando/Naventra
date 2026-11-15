@@ -115,7 +115,7 @@ for the schema, alerts setup, deploy steps and a training recipe.
 | Live traffic (primary) | [adsb.lol](https://adsb.lol) | Keyless; data under ODbL 1.0; reached via the `/proxy` relay |
 | Live traffic (fallback) | [adsb.fi](https://adsb.fi) | 1 req/s, personal non-commercial use; via proxy rewrites |
 | Weather | [NOAA / NWS](https://aviationweather.gov) METAR + TAF | real observations & forecasts |
-| Flight routes | [adsbdb.com](https://adsbdb.com) | callsign → origin/destination |
+| Flight routes | [adsbdb.com](https://adsbdb.com) | callsign → origin/destination, shown only when it fits the aircraft's position (flight numbers get reused); displayed live, never stored — route data © David Taylor & Jim Mason |
 | Airports & runways | [OurAirports](https://ourairports.com/data/) | public domain, generated at build time |
 
 **Live data only.** If every live source is unreachable the console says so (RECONNECTING),

@@ -3,7 +3,7 @@
 // engine + grading code with the browser (../../src/engine/*).
 
 import { AIRPORTS } from '../../src/data/airports.js';
-import { allocateRunways, annotateAircraft, inferActiveArrivals, departureEnd, ON_FIELD_NM } from '../../src/engine/atc.js';
+import { allocateRunways, annotateAircraft, inferActiveArrivals, departureEnd } from '../../src/engine/atc.js';
 import { octantOf } from '../../src/engine/octant.js';
 import { classifyLandingRunway, gradeItems } from '../../src/engine/grading.js';
 import { etaCorrectionSec, ETA_OUTLIER_MS } from '../../src/engine/etaModel.js';
@@ -235,7 +235,7 @@ export async function tickAirport(env, icao) {
     const did = 'dep:' + ac.id;
     const d = openDep.get(did);
     if (!d) {
-      if (wx && ac.phase === 'GROUND' && ac.depPlan?.end && ac.distNm <= ON_FIELD_NM && ac.gs > 5 && ac.gs < 60 && !open.has(ac.id)
+      if (wx && ac.atField && ac.depPlan?.end && ac.gs > 5 && ac.gs < 60 && !open.has(ac.id)
           && !recentlyLanded.has(`${icao}:${ac.id}`)) {
         const p = ac.depPlan;
         const rec = {

@@ -822,7 +822,9 @@ body {
 .strip-bot { display: flex; gap: 10px; margin-top: 2px; font-size: 9.5px; color: var(--muted); }
 .strip-bot .gate { color: var(--violet); }
 .strip-bot .rwy { color: var(--green); }
-.strip-bot .route { color: var(--cyan); }
+.strip-bot .route { color: var(--cyan); white-space: nowrap; }
+.strip-bot .route.seen { color: var(--text-dim); }               /* only the end the track shows */
+.strip-bot .route.elsewhere { color: var(--muted); font-style: italic; } /* lands / left a neighbouring field */
 
 .phase-chip {
   font-size: 8.5px;
