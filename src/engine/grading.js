@@ -3,6 +3,7 @@
 
 import { toLocalNm, angleDiff } from '../lib/geo.js';
 import { stripOffsets } from './atc.js';
+import { thresholds } from './departures.js';
 
 export const CATEGORIES = [
   ['runway', 'Arrival runway'],
@@ -69,4 +70,20 @@ export function gradeItems({ predRunway, predEtaTs, rawEtaTs, sampleSeq }, actua
     items.push({ cat: 'sequence', predicted: '#1 on runway', actual: `was #${sampleSeq}`, ok: sampleSeq === 1 });
   }
   return items;
+}
+
+// When did it actually touch down? A tracker polling every couple of minutes
+// first sees a landed aircraft already taxiing, up to a full interval late —
+// which would bias every ETA grade. Instead, fly the last airborne sample on to
+// the threshold of the runway it landed on, at the average of its speed then
+// and a typical touchdown speed. Clamped between that sample and the moment it
+// was seen down; falls back to `seenTs` when there's nothing to go on.
+export function estimateTouchdown(sample, seenTs, runwayEnd, airport) {
+  if (!sample?.ts || !runwayEnd || !(sample.gs > 60)) return seenTs;
+  const t = thresholds(airport).get(runwayEnd);
+  if (!t) return seenTs;
+  const p = toLocalNm(airport.lat, airport.lon, sample.lat, sample.lon);
+  const nm = Math.hypot(p.x - t.x, p.y - t.y);
+  const est = sample.ts + (nm / ((sample.gs + 135) / 2)) * 3600 * 1000;
+  return Math.round(Math.min(seenTs, Math.max(sample.ts, est)));
 }

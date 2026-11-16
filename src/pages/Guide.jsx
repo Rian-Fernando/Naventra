@@ -78,9 +78,10 @@ export default function Guide() {
           its predictions get — and the scorecard proves it either way.
         </p>
         <p>
-          A companion <b>always-on tracker</b> (a Cloudflare Worker on a 1-minute cron) runs this same
-          engine 24/7 against <b>JFK, LAX and London Heathrow</b> with no browser open, banking every graded
-          landing and the learned model into a shared database. When you're viewing one of those hubs the
+          A companion <b>always-on tracker</b> (a Cloudflare Worker that polls every two minutes) runs this
+          same engine 24/7 against <b>New York JFK</b> with no browser open, banking every graded landing and
+          departure and the learned model into a shared database. (It also covered LAX and London Heathrow
+          from July to November 2026; their history stays in the dataset.) When you're viewing JFK the
           scorecard shows the <em>global</em> figure — the model that has been continuously learning across
           all visitors — marked <b>GLOBAL · 24/7</b>. Other airports show your live session's own tally.
         </p>
@@ -126,19 +127,20 @@ export default function Guide() {
           achieving right now.
         </p>
 
-        <h2>No API keys · no paid model · $0</h2>
+        <h2>No paid APIs · no paid model · $0</h2>
         <p>
           People assume "AI that learns" implies a large language model and a metered API bill. Naventra
           has neither. The decision core is a <b>deterministic expert system</b> — explicit, auditable rules
           that encode real ATC procedure (wind-component runway selection, closest-point-of-approach
           separation math, ETA sequencing) — wrapped in the online-learning loop above. There is <b>no LLM
-          anywhere</b>, so there is nothing to hold an API key for and nothing to meter.
+          anywhere</b>, so there is no model API to pay for or meter.
         </p>
         <p>
-          Every data source is <b>free and keyless</b>: live traffic from the open <b>adsb.lol</b>
-          ADS-B feed (with adsb.lol / adsb.fi as failovers), weather from the US government's
+          Every data source is <b>free</b>: live traffic from the community ADS-B networks <b>adsb.fi</b> and
+          <b>adsb.lol</b> (the always-on tracker uses adsb.lol&rsquo;s free API key), weather from the US government's
           <b> aviationweather.gov</b> METAR service. The browser app is static hosting; the always-on
-          tracker is a <b>Cloudflare Worker</b> (free tier: a 1-minute cron is well under the limits) writing
+          tracker is a <b>Cloudflare Worker</b> on the free tier, polling every two minutes to stay inside the
+          free key&rsquo;s 1,000 requests a day, writing
           to a <b>free D1 database</b>. The math is a few hundred lines of plain JavaScript that runs the same
           in your browser and in the Worker. The result: a system that genuinely learns and runs around the
           clock, for nothing — because the intelligence is in the modelling and the feedback loop, not in
@@ -189,8 +191,8 @@ export default function Guide() {
           as automatic failovers. Weather: <b>aviationweather.gov</b> METARs (5-minute refresh), US fallback
           via api.weather.gov. Positions are dead-reckoned between polls for smooth motion. Naventra is
           <b>live-data only</b>: if every source is unreachable the console says so and retries — it never
-          fills the scope with simulated traffic or invents weather. All sources are free and keyless; the
-          entire AI core runs in your browser, with a 24/7 tracker grading the three hub airports.
+          fills the scope with simulated traffic or invents weather. All sources are free; the entire AI core
+          runs in your browser, with a 24/7 tracker grading JFK.
         </p>
 
         <p className="guide-credit">

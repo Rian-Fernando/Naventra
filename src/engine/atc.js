@@ -119,6 +119,15 @@ export function departureEnd(ac, airport) {
   return alignedEnd(ac, airport, 5.0, 1.2);
 }
 
+// The runway a departure is rolling down: on the runway itself, at takeoff
+// speed. A landing rollout looks the same, so this is only used to grade a
+// flight already locked as departing (never to read the departure flow) — it
+// catches take-offs a slow poll would miss between climb-out samples.
+export function takeoffRollEnd(ac, airport) {
+  if (!(ac.onGround || (ac.agl != null && ac.agl < 100)) || !(ac.gs >= 60)) return null;
+  return alignedEnd(ac, airport, 2.0, 0.06); // 0.06 nm: LAX's parallels are 0.13 nm apart
+}
+
 // Read the ACTIVE arrival runways from traffic on final approach — what a
 // controller sees, and better than a wind guess because real flows follow
 // procedure and inertia. This test is INDEPENDENT of the wind-based phase:

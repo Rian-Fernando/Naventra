@@ -3,9 +3,9 @@
 // engine + grading code with the browser (../../src/engine/*).
 
 import { AIRPORTS } from '../../src/data/airports.js';
-import { allocateRunways, annotateAircraft, inferActiveArrivals, departureEnd } from '../../src/engine/atc.js';
+import { allocateRunways, annotateAircraft, inferActiveArrivals, departureEnd, takeoffRollEnd } from '../../src/engine/atc.js';
 import { octantOf } from '../../src/engine/octant.js';
-import { classifyLandingRunway, gradeItems } from '../../src/engine/grading.js';
+import { classifyLandingRunway, gradeItems, estimateTouchdown } from '../../src/engine/grading.js';
 import { etaCorrectionSec, ETA_OUTLIER_MS } from '../../src/engine/etaModel.js';
 import { observeDepartures, flowWeights, makeDeparturePlanner, learnDeparture, emptyDepModel } from '../../src/engine/departures.js';
 import { trainedModel } from './modelSource.js';
@@ -16,7 +16,6 @@ import {
 } from './store.js';
 import { lockFeatures, decodeWx } from './features.js';
 
-export const TRACKED = ['KJFK', 'KLAX', 'EGLL'];
 const RADIUS_NM = 60;
 
 function normalize(raw, now) {
@@ -36,10 +35,13 @@ function normalize(raw, now) {
   };
 }
 
-// Free, keyless ADS-B aggregators returning readsb JSON ({ ac: [...] }). Their
-// terms, as checked 2026-10 — keep this list honest if they change again:
-//  - adsb.lol : no key today (feeder keys planned), dynamic load-based limits,
-//               data licensed ODbL 1.0. Serves Cloudflare Workers most minutes.
+// Free ADS-B aggregators returning readsb JSON ({ ac: [...] }). Their terms, as
+// checked 2026-11 — keep this list honest if they change again:
+//  - adsb.lol : metered — 500 requests/day per IP without a key, 1,000/day with
+//               the free key (x-api-key header), data licensed ODbL 1.0. With
+//               ADSBLOL_API_KEY set (a Worker secret) every request carries the
+//               key and goes direct; the per-IP relay path below is only used
+//               without one.
 //  - adsb.fi  : public endpoints 1 request/second, personal non-commercial use,
 //               must cite adsb.fi with a link. Point query is /api/v3/lat/…/dist/….
 //               It returns 403 to Cloudflare Workers (a deliberate block), so the
@@ -58,11 +60,26 @@ function normalize(raw, now) {
 // log names each source's status.
 export const UA = 'Naventra/1.0 (+https://naventra.rianfernando.com; non-commercial portfolio)';
 const RELAY = 'https://naventra.rianfernando.com/proxy/adsblol';
-const ADSB_SOURCES = [
-  { key: 'relay→adsb.lol', upstream: 'adsb.lol', url: (lat, lon, r) => `${RELAY}/v2/point/${lat}/${lon}/${r}` },
-  { key: 'api.adsb.lol', upstream: 'adsb.lol', url: (lat, lon, r) => `https://api.adsb.lol/v2/point/${lat}/${lon}/${r}` },
-  { key: 'opendata.adsb.fi', upstream: 'adsb.fi', url: (lat, lon, r) => `https://opendata.adsb.fi/api/v3/lat/${lat}/lon/${lon}/dist/${r}` },
-];
+const DIRECT = (lat, lon, r) => `https://api.adsb.lol/v2/point/${lat}/${lon}/${r}`;
+const ADSB_FI = { key: 'opendata.adsb.fi', upstream: 'adsb.fi', url: (lat, lon, r) => `https://opendata.adsb.fi/api/v3/lat/${lat}/lon/${lon}/dist/${r}` };
+function adsbSources(env) {
+  if (env?.ADSBLOL_API_KEY) {
+    return [
+      { key: 'adsb.lol (key)', upstream: 'adsb.lol', url: DIRECT, headers: { 'x-api-key': env.ADSBLOL_API_KEY } },
+      ADSB_FI,
+    ];
+  }
+  return [
+    { key: 'relay→adsb.lol', upstream: 'adsb.lol', url: (lat, lon, r) => `${RELAY}/v2/point/${lat}/${lon}/${r}` },
+    { key: 'api.adsb.lol', upstream: 'adsb.lol', url: DIRECT },
+    ADSB_FI,
+  ];
+}
+
+// adsb.lol requests made by this isolate — the scheduler counts them against
+// the daily budget (see index.js).
+let adsbLolRequests = 0;
+export const adsbRequestCount = () => adsbLolRequests;
 const BLOCKED_REPROBE_MS = 6 * 3600 * 1000; // after a 403, try again in 6 h
 const nextSlot = new Map();  // upstream -> earliest ms our next request may start
 const coolUntil = new Map(); // source key -> ms until which we leave it alone
@@ -86,10 +103,10 @@ export function rateLimitCooldownMs(retryAfterHeader, consecutive429s) {
   return Math.min(20000 * 2 ** Math.max(0, consecutive429s - 1), 120000);
 }
 
-async function fetchTraffic(airport) {
+async function fetchTraffic(airport, env) {
   const lat = airport.lat.toFixed(4), lon = airport.lon.toFixed(4);
   const errs = [];
-  for (const src of ADSB_SOURCES) {
+  for (const src of adsbSources(env)) {
     const until = coolUntil.get(src.key) || 0;
     if (until > Date.now()) { errs.push(`${src.key} backing off ${Math.round((until - Date.now()) / 1000)}s`); continue; }
     try {
@@ -97,7 +114,8 @@ async function fetchTraffic(airport) {
       // Re-check after waiting our turn: a hub queued behind a request that just
       // got 429 must not send its own request into the same limit.
       if ((coolUntil.get(src.key) || 0) > Date.now()) { errs.push(`${src.key} backing off`); continue; }
-      const res = await fetch(src.url(lat, lon, RADIUS_NM), { headers: { 'User-Agent': UA, Accept: 'application/json' } });
+      if (src.upstream === 'adsb.lol') adsbLolRequests++;
+      const res = await fetch(src.url(lat, lon, RADIUS_NM), { headers: { 'User-Agent': UA, Accept: 'application/json', ...(src.headers || {}) } });
       if (res.status === 429) {
         const n = (strikes.get(src.key) || 0) + 1;
         strikes.set(src.key, n);
@@ -169,7 +187,7 @@ export async function tickAirport(env, icao) {
   for (const [k, ts] of recentlyLanded) if (now - ts > LANDED_MEMORY_MS) recentlyLanded.delete(k);
 
   const [tracks, wx, model, openSaved, arrRate, cfgState, etaModel] = await Promise.all([
-    fetchTraffic(airport), fetchWx(icao), loadModel(env.DB, icao), loadOpenState(env.DB, icao), arrRate1h(env.DB, icao, now),
+    fetchTraffic(airport, env), fetchWx(icao), loadModel(env.DB, icao), loadOpenState(env.DB, icao), arrRate1h(env.DB, icao, now),
     loadConfig(env.DB, icao), trainedModel(UA),
   ]);
 
@@ -247,7 +265,8 @@ export async function tickAirport(env, icao) {
       }
       continue;
     }
-    const actual = departureEnd(ac, airport);
+    // Climbing out, or (between slow polls) caught on the takeoff roll.
+    const actual = departureEnd(ac, airport) || takeoffRollEnd(ac, airport);
     if (actual) {
       openDep.delete(did);
       const plan = d.features;
@@ -279,9 +298,11 @@ export async function tickAirport(env, icao) {
   const statDelta = new Map();           // cat -> { n, correct }  (one upsert each)
   let graded = 0, locked = 0;
 
-  const finalize = (o, landedTs) => {
+  const finalize = (o, seenTs) => {
     recentlyLanded.set(`${icao}:${o.id}`, now);
     const actualRunway = o.sample ? classifyLandingRunway(o.sample, airport) : null;
+    // Touchdown from the last airborne sample, not when it was first seen down.
+    const landedTs = estimateTouchdown(o.sample, seenTs, actualRunway, airport);
     if (o.sample) {
       recordLandingIntoModel(model, o.lockOct, actualRunway, (landedTs - o.rawEtaTs) / 1000);
       const items = gradeItems(
@@ -311,6 +332,7 @@ export async function tickAirport(env, icao) {
             seq_at_land: o.sample.seq ?? null,
             seq_ok: o.sample.seq === 1 ? 1 : 0,
             land_ts: landedTs,
+            land_seen_ts: seenTs,
           },
         });
       }
@@ -351,7 +373,7 @@ export async function tickAirport(env, icao) {
 
     o.lastSeen = now;
     if (!ac.onGround && ac.agl != null && ac.agl < 4000 && ac.gs > 60) {
-      o.sample = { lat: ac.lat, lon: ac.lon, track: ac.track, agl: ac.agl, distNm: ac.distNm, seq: ac.seqRwy ?? o.sample?.seq ?? null };
+      o.sample = { lat: ac.lat, lon: ac.lon, track: ac.track, agl: ac.agl, distNm: ac.distNm, gs: ac.gs, ts: now, seq: ac.seqRwy ?? o.sample?.seq ?? null };
     }
 
     if (ac.onGround || (ac.agl != null && ac.agl < 120 && ac.gs < 90)) {

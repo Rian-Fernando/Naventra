@@ -18,7 +18,7 @@ const FEATURES = [
   [CloudSun, 'Forecast-aware runways', 'It reads the live METAR and TAF forecast, computes head/crosswind for every runway end, and predicts when the wind will flip the whole configuration — before it happens.'],
   [ShieldAlert, 'Separation monitoring', 'Closest-point-of-approach math projects every aircraft pair 150 seconds ahead, flagging losses of separation before they occur.'],
   [Boxes, '3D radar & airport layout', 'Orbit a true-to-scale 3D scope, zoom to the field to see real runways, terminals and gates, and follow any aircraft in a 3D chase cam.'],
-  [Activity, 'Self-learning, always on', 'A cloud model runs every minute, learning runway patterns and timing bias from each real landing at JFK, LAX and Heathrow — and the scorecard shows honestly whether it’s working.'],
+  [Activity, 'Self-learning, always on', 'A cloud model runs around the clock, learning runway patterns and timing bias from each real landing at New York JFK — and the scorecard shows honestly whether it’s working.'],
 ];
 
 const STEPS = [
@@ -52,7 +52,7 @@ function useCountUp(target, run, ms = 1300) {
 }
 
 const HONEST = [
-  ['Free & keyless sources', 'Live ADS-B, METAR/TAF weather and public airport data — every feed is free and needs no API key.'],
+  ['Free, public sources', 'Live ADS-B, METAR/TAF weather and public airport data — every feed is free, and the console needs no sign-up or key.'],
   ['Live data only', 'Every aircraft and weather report is real. If the feeds go down, the console says so — it never fills in with simulated traffic or invented weather.'],
   ['Locked before the outcome', 'Each prediction is frozen before the aircraft lands, then measured from observation alone — no hindsight.'],
   ['Auditable, not marketing', 'The full labeled training dataset is downloadable, so the scorecard can be independently checked.'],
@@ -64,7 +64,7 @@ const FAQ = [
   ['What is Naventra?', 'Naventra is an AI-native air traffic control console that works real, live ADS-B traffic around the world’s busiest airports. An autonomous engine sequences arrivals, allocates runways from live weather, monitors separation and generates radio phraseology — then locks each prediction and grades itself against what actually happens.'],
   ['Is Naventra a real air traffic control system?', 'No. Naventra is an independent portfolio project and demonstration. It is not affiliated with any aviation authority and must not be used for operational or navigational purposes. It works with real live data but is a showcase of an AI decision engine, not certified air traffic control.'],
   ['How does Naventra grade its own accuracy?', 'When an aircraft commits to final, the engine locks its prediction — which runway, the touchdown time and the landing order. At touchdown it measures that prediction against the actual outcome observed from ADS-B, and publishes the running accuracy 24/7. Only real live traffic counts toward the score.'],
-  ['Is Naventra free to use?', 'Yes. Naventra is completely free, with no sign-up, no login and no API keys. Every data source — ADS-B traffic, weather and airport data — is free, keyless and public.'],
+  ['Is Naventra free to use?', 'Yes. Naventra is completely free, with no sign-up and no login. Every data source — ADS-B traffic, weather and airport data — is free and public.'],
   ['What data does Naventra use?', 'Live ADS-B transponder feeds (adsb.lol and adsb.fi), NOAA/NWS METAR and TAF weather, callsign routes from adsbdb.com, and airport and runway geometry from OurAirports. Every source is free and requires no API key.'],
   ['Who built Naventra?', 'Naventra was designed and built by Rian Fernando as a portfolio project. The full source is on GitHub, and the complete labeled training dataset is downloadable so the accuracy score can be independently verified.'],
 ];
@@ -157,12 +157,12 @@ export default function Landing() {
       {/* --------------------------------------------------------- hero ---- */}
       <header className="lp-hero">
         <div className="lp-hero-inner">
-          <div className="lp-eyebrow">LIVE · AI-NATIVE · $0 — NO API KEYS</div>
+          <div className="lp-eyebrow">LIVE · AI-NATIVE · $0 — NO SIGN-UP</div>
           <h1>Air traffic control,<br /><span className="lp-grad">run by an AI that grades itself.</span></h1>
           <p className="lp-sub">
             Naventra works real, live ADS-B traffic around the world&rsquo;s busiest airports — sequencing
             arrivals, allocating runways from live weather, and monitoring separation. Then it does what no
-            demo does: it predicts what happens next and <b>scores itself against reality, every minute.</b>
+            demo does: it predicts what happens next and <b>scores itself against reality, around the clock.</b>
           </p>
           <div className="lp-cta-row">
             <a className="lp-cta" href="/live">Launch live console <ArrowRight size={18} /></a>
@@ -182,7 +182,7 @@ export default function Landing() {
         <div className="lp-stat"><b>{stats ? <>{pct}<span>%</span></> : '—'}</b><span className="lp-stat-l">recent prediction accuracy</span></div>
         <div className="lp-stat"><b>{stats ? ops.toLocaleString() : '—'}</b><span className="lp-stat-l">real operations graded</span></div>
         <div className="lp-stat"><b>{stats ? rows.toLocaleString() : '—'}</b><span className="lp-stat-l">labeled training rows</span></div>
-        <div className="lp-stat"><b>{AIRPORT_COUNT}</b><span className="lp-stat-l">airports with live traffic · 3 graded 24/7</span></div>
+        <div className="lp-stat"><b>{AIRPORT_COUNT}</b><span className="lp-stat-l">airports with live traffic · JFK graded 24/7</span></div>
       </section>
 
       {/* ---------------------------------------------------------- how ---- */}
@@ -206,7 +206,7 @@ export default function Landing() {
         <h2>The AI is grading itself as you read this.</h2>
         <p className="lp-live-sub">
           These are real predictions the always-on model just locked and scored against actual landings and
-          departures across JFK, LAX and London Heathrow.
+          departures at New York JFK.
           {lastGradedMin != null && (
             <span className="lp-live-fresh"> Most recent grade: {lastGradedMin < 1 ? 'under a minute' : `${lastGradedMin} min`} ago.</span>
           )}

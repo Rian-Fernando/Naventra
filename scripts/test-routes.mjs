@@ -6,7 +6,9 @@
 
 import { legFits, describeRoute, crossAlong, isAirlineCallsign } from '../src/lib/routeMatch.js';
 import { AIRPORTS } from '../src/data/airports.js';
-import { fieldRadiusNm, annotateAircraft, allocateRunways } from '../src/engine/atc.js';
+import { fieldRadiusNm, annotateAircraft, allocateRunways, takeoffRollEnd } from '../src/engine/atc.js';
+import { estimateTouchdown } from '../src/engine/grading.js';
+import { thresholds } from '../src/engine/departures.js';
 
 let failures = 0;
 const check = (name, cond, detail = '') => {
@@ -128,6 +130,28 @@ const route = (from, to, via = null, airline = 'Test Air') => ({ airline, from, 
   const ann = annotateAircraft([parkedAtLGA, parkedAtJFK], jfk, allocateRunways(jfk, { windDir: 220, windKt: 10 }), {});
   check('aircraft parked at LaGuardia is not on JFK\'s field', ann[0].atField === false && ann[0].runway == null && ann[0].gate == null);
   check('aircraft parked at JFK is on the field', ann[1].atField === true);
+}
+
+// ------------------------------------------ slow-poll grading (2-min cadence) --
+{
+  // Rolling down JFK 22R at 120 kt, halfway along it.
+  const t22R = thresholds(jfk).get('22R');
+  const at = (x, y) => ({ lat: jfk.lat + y / 60, lon: jfk.lon + x / (60 * Math.cos(jfk.lat * Math.PI / 180)) });
+  const h = (211 * Math.PI) / 180;
+  const rolling = { ...at(t22R.x + Math.sin(h) * 0.6, t22R.y + Math.cos(h) * 0.6), onGround: true, gs: 120, track: 211, agl: 0 };
+  check('takeoff roll is read off the runway the aircraft is on', takeoffRollEnd(rolling, jfk) === '22R', takeoffRollEnd(rolling, jfk));
+  check('taxiing (slow) is not a takeoff roll', takeoffRollEnd({ ...rolling, gs: 25 }, jfk) === null);
+  check('climbing aircraft is not on its takeoff roll', takeoffRollEnd({ ...rolling, onGround: false, agl: 900 }, jfk) === null);
+
+  // Last airborne sample 2 nm before the 31R threshold at 150 kt.
+  const t31R = thresholds(jfk).get('31R');
+  const hh = (301 * Math.PI) / 180;
+  const sample = { ...at(t31R.x - Math.sin(hh) * 2, t31R.y - Math.cos(hh) * 2), gs: 150, ts: 1_000_000 };
+  const seen = 1_000_000 + 120_000; // first seen down a full 2-minute tick later
+  const est = estimateTouchdown(sample, seen, '31R', jfk);
+  check('touchdown is estimated from the last airborne sample, not the late sighting', est > 1_000_000 + 40_000 && est < 1_000_000 + 60_000, `${(est - 1_000_000) / 1000}s after sample`);
+  check('estimate never lands after the aircraft was seen down', estimateTouchdown({ ...sample, ts: seen - 1000 }, seen, '31R', jfk) <= seen);
+  check('no sample time → falls back to the sighting', estimateTouchdown({ ...sample, ts: undefined }, seen, '31R', jfk) === seen);
 }
 
 console.log(`\n${failures ? `${failures} FAILED` : 'All route checks passed'}`);

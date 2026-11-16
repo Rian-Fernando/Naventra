@@ -7,7 +7,7 @@ import '../styles/landing.css';
 // About. Plain, official-looking, and all true. No 3D, no tracking scripts.
 
 const SOURCES = [
-  ['Live aircraft (ADS-B)', 'adsb.lol · adsb.fi', 'Community ADS-B receiver networks, free and keyless, with automatic failover between them. Every target on the radar is a real aircraft broadcasting its own position.'],
+  ['Live aircraft (ADS-B)', 'adsb.fi · adsb.lol', 'Community ADS-B receiver networks, free, with automatic failover between them. Your browser\u2019s live view needs no key; the always-on tracker uses adsb.lol\u2019s free API key. Every target on the radar is a real aircraft broadcasting its own position.'],
   ['Weather (METAR & TAF)', 'NOAA / NWS Aviation Weather Center', 'The official U.S. government aviation weather service. Drives runway allocation and the forecast outlook.'],
   ['Flight routes', 'adsbdb.com', 'Free, keyless callsign → origin/destination lookups, shown only when the route fits where the aircraft actually is — airlines reuse flight numbers, so a route on file can belong to a different flight. Looked up by your browser and displayed live; never stored or redistributed.'],
   ['Airports & runways', 'OurAirports (public domain)', 'Runway thresholds, headings, lengths and frequencies. Exact geometry is generated from this dataset at build time — nothing is hand-entered.'],
@@ -69,8 +69,8 @@ function About() {
       <ul>
         <li><b>Frontend:</b> a Vite + React single-page app with a three.js 3D radar.</li>
         <li><b>Engine:</b> a deterministic expert system plus an online learning layer — no black-box LLM in the control loop.</li>
-        <li><b>Always-on model:</b> a Cloudflare Worker + D1 database that tracks and grades real operations every minute, banking a shared self-learning model.</li>
-        <li><b>Cost:</b> $0. Every data source is free and keyless.</li>
+        <li><b>Always-on model:</b> a Cloudflare Worker + D1 database that tracks and grades real operations at New York JFK every two minutes, banking a shared self-learning model.</li>
+        <li><b>Cost:</b> $0. Every data source is free.</li>
       </ul>
       <h2>Who built it</h2>
       <p>Designed and built by <a href="https://rianfernando.com" rel="external" target="_blank">Rian Fernando</a>. Source on <a href="https://github.com/Rian-Fernando/Naventra" rel="external" target="_blank">GitHub</a>.</p>
@@ -87,7 +87,7 @@ const PAGES = {
   },
   '/data': {
     title: 'Data & Sources — Naventra',
-    description: 'Every data source behind Naventra: live ADS-B (adsb.lol, adsb.fi), NOAA/NWS METAR & TAF weather, adsbdb.com routes, and OurAirports airport data — all free, keyless and public, with attribution.',
+    description: 'Every data source behind Naventra: live ADS-B (adsb.fi, adsb.lol), NOAA/NWS METAR & TAF weather, adsbdb.com routes, and OurAirports airport data — all free and public, with attribution.',
     body: DataSources,
   },
   '/about': {

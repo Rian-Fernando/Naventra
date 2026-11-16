@@ -46,7 +46,7 @@ export default function ScorecardPanel({ scorecard, mode, scope = 'session', glo
       {/* Rendered from first paint (placeholder until the tracker answers) so the
           scorecard doesn't grow — and shove the panels below it — on load. */}
       {(globalTotals || trackerConfigured) && (
-        <div className="learn-strip" title="The always-on tracker runs 24/7, learning from every real landing it grades across JFK, LAX and LHR — and logging each as a labeled training row.">
+        <div className="learn-strip" title="The always-on tracker runs 24/7, learning from every real landing it grades at JFK (LAX and Heathrow too, July–November 2026) — and logging each as a labeled training row.">
           <span className="ls-dot" />
           <span className="ls-text">
             {globalTotals ? (

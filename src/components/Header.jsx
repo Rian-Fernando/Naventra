@@ -44,7 +44,7 @@ export default function Header({ airport, icao, setIcao, mode, source, lastLiveA
         <select value={icao} onChange={(e) => setIcao(e.target.value)} title="Facility">
           {trackerConfigured ? (
             <>
-              <optgroup label="Always-on hubs · 24/7 model">
+              <optgroup label="Always-on hub · graded 24/7">
                 {AIRPORT_LIST.filter((a) => TRACKED_HUBS.includes(a.icao)).map((a) => (
                   <option key={a.icao} value={a.icao}>◉ {a.iata} — {a.name}</option>
                 ))}

@@ -10,7 +10,8 @@
 // steering its own simulation would inflate the number).
 
 import { octantOf, recordLanding, recordEtaError, etaBiasSec, learnedLandings } from './learning.js';
-import { CATEGORIES, classifyLandingRunway, gradeItems } from './grading.js';
+import { CATEGORIES, classifyLandingRunway, gradeItems, estimateTouchdown } from './grading.js';
+import { takeoffRollEnd } from './atc.js';
 
 export { CATEGORIES };
 const STORE_KEY = 'nv-scorecard-v1';
@@ -66,7 +67,7 @@ export class PredictionTracker {
         }
         d.lastSeen = now;
         if (ac.gs >= 3) d.moved = now;
-        const actual = departureEndFn(ac, this.airport);
+        const actual = departureEndFn(ac, this.airport) || takeoffRollEnd(ac, this.airport);
         if (actual) {
           this.openDep.delete(ac.id);
           this.gradeDeparture(d, actual, runways);
@@ -114,7 +115,7 @@ export class PredictionTracker {
       // seq survives from the last tick that had one — phase wobble right at
       // the threshold must not erase the sequencing evidence.
       if (!ac.onGround && ac.agl != null && ac.agl < 4000 && ac.gs > 60) {
-        o.sample = { lat: ac.lat, lon: ac.lon, track: ac.track, agl: ac.agl, distNm: ac.distNm, seq: ac.seqRwy ?? o.sample?.seq ?? null, ts: now };
+        o.sample = { lat: ac.lat, lon: ac.lon, track: ac.track, agl: ac.agl, distNm: ac.distNm, gs: ac.gs, seq: ac.seqRwy ?? o.sample?.seq ?? null, ts: now };
       }
 
       if (ac.onGround || (ac.agl != null && ac.agl < 120 && ac.gs < 90)) {
@@ -178,13 +179,14 @@ export class PredictionTracker {
     if (live) saveStore(this.store);
   }
 
-  grade(id, landedTs, arrEndsNow) {
+  grade(id, seenTs, arrEndsNow) {
     const o = this.open.get(id);
     this.open.delete(id);
     this.landed.set(id, Date.now());
     if (!o || !o.sample) return;
 
     const actualRunway = classifyLandingRunway(o.sample, this.airport);
+    const landedTs = estimateTouchdown(o.sample, seenTs, actualRunway, this.airport);
 
     // Feed the outcome back into the predictor — live landings only, so the
     // model learns the real facility, not our own simulation.

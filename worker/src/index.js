@@ -1,12 +1,14 @@
 // Naventra always-on tracker.
-//   scheduled()  — every minute: tick each hub, grade landings, learn.
+//   scheduled()  — every TICK_EVERY_MIN minutes: tick each active hub, grade
+//                  landings and departures, learn (see wrangler.toml [vars]).
 //   fetch()      — read API for the frontend:
 //     GET /api/scorecard[?icao=KJFK]   global accuracy + recent landings
 //     GET /api/model                    learned model params (all airports)
 //     GET /api/health                   liveness, data freshness per hub, stale flag
 //     GET /api/dataset.jsonl            labeled training rows (paged, newest first)
 
-import { tickAirport, TRACKED, UA } from './tracker.js';
+import { tickAirport, adsbRequestCount, UA } from './tracker.js';
+import { dayBudget, activeHubs, knownHubs, DATA_HUBS } from './budget.js';
 import { getScorecard, getModels, datasetCount, datasetRows, loadTickState, saveTickStmt, loadStates, saveStateStmt, ALERT_KEY } from './store.js';
 import { trainedModel, modelInfo } from './modelSource.js';
 import { runAlerts, alertsConfigured, alertDatabase, resetDatabaseStreak } from './alerts.js';
@@ -29,33 +31,49 @@ const json = (obj, status = 200, maxAge = 30) =>
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil((async () => {
-      // Rotate which hub asks first each minute, so no single hub always takes
-      // the hit when a source has just started rate-limiting.
-      const minute = Math.floor(Date.now() / 60000);
-      const order = TRACKED.map((_, i) => TRACKED[(i + minute) % TRACKED.length]);
-      const results = await Promise.all(
-        order.map((icao) =>
-          tickAirport(env, icao).catch((e) => ({ icao, error: String(e && e.message || e) }))
-        )
-      );
-      console.log('tick', JSON.stringify(results));
+      const start = Date.now();
+      const minute = Math.floor(start / 60000);
+      // The cron fires every minute; the tracker works every TICK_EVERY_MIN
+      // minutes (adsb.lol's free key allows 1,000 requests a day).
+      const every = Math.max(1, parseInt(env.TICK_EVERY_MIN || '1', 10) || 1);
+      if (minute % every !== 0) return;
+      const hubs = activeHubs(env);
+
+      let st = {};
+      try { st = await loadStates(env.DB, ['tick:last', ALERT_KEY]); }
+      catch (e) { console.error('state load failed', e); }
+      const prev = st['tick:last'] || { hubs: {} };
+
+      // Stay inside the daily request budget: stop for the day rather than run
+      // past it (each hub costs 1 request with a key, up to 2 without).
+      const cap = parseInt(env.ADSB_DAILY_CAP || '900', 10) || 900;
+      const budget = dayBudget(prev.quota, start, cap, hubs.length * (env.ADSBLOL_API_KEY ? 1 : 2));
+      const before = adsbRequestCount();
+      // Rotate which hub asks first, so no single hub always takes the hit when
+      // a source has just started rate-limiting.
+      const order = hubs.map((_, i) => hubs[(i + minute) % hubs.length]);
+      const results = budget.allowed
+        ? await Promise.all(order.map((icao) =>
+          tickAirport(env, icao).catch((e) => ({ icao, error: String(e && e.message || e) }))))
+        : hubs.map((icao) => ({ icao, error: `adsb.lol daily request budget used (${budget.used}/${cap}) — resumes 00:00 UTC` }));
+      const quota = { day: budget.day, used: budget.used + (adsbRequestCount() - before), cap };
+      console.log('tick', JSON.stringify(results), JSON.stringify(quota));
+
       // Heartbeat: remember when each hub last ticked successfully — then let the
       // alerting decide whether that is news worth an email.
       try {
         const now = Date.now();
-        const st = await loadStates(env.DB, ['tick:last', ALERT_KEY]);
-        const prev = st['tick:last'] || { hubs: {} };
-        const hubs = {};
+        const state = {};
         for (const r of results) {
           const was = prev.hubs?.[r.icao] || {};
-          hubs[r.icao] = r.error
+          state[r.icao] = r.error
             ? { ok: false, error: r.error.slice(0, 200), lastOkTs: was.lastOkTs || null, tracked: was.tracked ?? null, config: was.config || null, open: was.open ?? null }
             : { ok: true, lastOkTs: now, tracked: r.tracked, graded: r.graded, locked: r.locked, source: r.source, config: r.config, open: r.open };
         }
-        const stmts = [saveTickStmt(env.DB, { ts: now, hubs })];
+        const stmts = [saveTickStmt(env.DB, { ts: now, hubs: state, quota, everyMin: every })];
         const info = modelInfo();
         const alertState = await runAlerts(env, {
-          now, tracked: TRACKED, hubs, prevHubs: prev.hubs || null, state: st[ALERT_KEY], ua: UA,
+          now, tracked: hubs, hubs: state, prevHubs: prev.hubs || null, state: st[ALERT_KEY], ua: UA,
           modelGeneratedAt: info.generatedAt ? Date.parse(info.generatedAt) : null,
           modelSource: info.source,
         });
@@ -92,21 +110,26 @@ export default {
     try {
       if (url.pathname === '/api/scorecard') {
         const icao = url.searchParams.get('icao') || null;
-        return served(json(await getScorecard(env.DB, icao && TRACKED.includes(icao) ? icao : null), 200, 30));
+        return served(json(await getScorecard(env.DB, icao && knownHubs(env).includes(icao) ? icao : null), 200, 30));
       }
       if (url.pathname === '/api/model') {
-        return served(json({ tracked: TRACKED, models: await getModels(env.DB) }, 200, 300));
+        return served(json({ tracked: activeHubs(env), models: await getModels(env.DB) }, 200, 300));
       }
       if (url.pathname === '/api/health') {
         const now = Date.now();
         const tick = await loadTickState(env.DB);
-        const hubs = tick?.hubs || {};
-        const staleHubs = TRACKED.filter((i) => !hubs[i]?.lastOkTs || now - hubs[i].lastOkTs > STALE_MS);
+        const active = activeHubs(env);
+        const hubs = Object.fromEntries(active.map((i) => [i, tick?.hubs?.[i] || null]));
+        const staleHubs = active.filter((i) => !hubs[i]?.lastOkTs || now - hubs[i].lastOkTs > STALE_MS);
         await trainedModel(UA);
         return served(json({
           ok: staleHubs.length === 0,
           stale: staleHubs,
-          tracked: TRACKED,
+          tracked: active,
+          paused: DATA_HUBS.filter((i) => !active.includes(i)), // history kept, not polled now
+          everyMin: Math.max(1, parseInt(env.TICK_EVERY_MIN || '1', 10) || 1),
+          adsbBudget: tick?.quota || null,
+          adsbKey: !!env.ADSBLOL_API_KEY,
           samples: await datasetCount(env.DB),
           lastTickTs: tick?.ts || null,
           hubs,
@@ -124,7 +147,7 @@ export default {
         const icao = url.searchParams.get('icao');
         const limit = Math.min(parseInt(url.searchParams.get('limit') || '5000', 10) || 5000, 20000);
         const before = parseInt(url.searchParams.get('before') || '0', 10) || null;
-        const { rows, nextBefore } = await datasetRows(env.DB, icao && TRACKED.includes(icao) ? icao : null, limit, before);
+        const { rows, nextBefore } = await datasetRows(env.DB, icao && knownHubs(env).includes(icao) ? icao : null, limit, before);
         // The rows are an adapted database derived from ADS-B positions that
         // include adsb.lol data (ODbL 1.0), so ODbL's share-alike clause makes the
         // export ODbL 1.0 as well. Declared here machine-readably; the code stays MIT.
@@ -140,16 +163,6 @@ export default {
             ...CORS,
           },
         }));
-      }
-      // Manual trigger for local testing / first warm-up (harmless in prod). Never cached.
-      if (url.pathname === '/api/tick') {
-        const r = await Promise.all(TRACKED.map((i) =>
-          tickAirport(env, i).catch((e) => {
-            console.error('tickAirport failed', i, e);
-            return { icao: i, error: 'tick failed' };
-          })
-        ));
-        return json({ ticked: r }, 200, 0);
       }
     } catch (e) {
       console.error('Unhandled fetch error', e);

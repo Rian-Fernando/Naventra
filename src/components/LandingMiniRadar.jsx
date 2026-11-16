@@ -9,11 +9,14 @@ import { toLocalNm, deadReckon } from '../lib/geo.js';
 const HUB = { icao: 'JFK', lat: 40.6413, lon: -73.7781 };
 const RANGE_NM = 40;
 const SIZE = 320;
-const STALE_MS = 45000;
+const STALE_MS = 60000;
+const POLL_MS = 15000;
 
 export default function LandingMiniRadar() {
   const canvasRef = useRef(null);
   const dataRef = useRef({ aircraft: [], fetchedAt: 0 });
+  const visibleRef = useRef(true); // on screen (set by the draw loop's observer)
+  const loadRef = useRef(null);
   const [count, setCount] = useState(null);
   const [stale, setStale] = useState(false);
 
@@ -21,6 +24,9 @@ export default function LandingMiniRadar() {
   useEffect(() => {
     let alive = true;
     const load = async () => {
+      // Decorative, and every visitor shares the feed relay: only poll while the
+      // scope is on screen in a visible tab.
+      if (document.hidden || !visibleRef.current) return;
       try {
         const { aircraft } = await fetchLiveTraffic(HUB.lat, HUB.lon, RANGE_NM);
         if (!alive) return;
@@ -33,9 +39,13 @@ export default function LandingMiniRadar() {
         if (!fetchedAt || Date.now() - fetchedAt > STALE_MS) setStale(true);
       }
     };
+    loadRef.current = load;
     load();
-    const t = setInterval(load, 6000);
-    return () => { alive = false; clearInterval(t); };
+    const t = setInterval(load, POLL_MS);
+    // Back in a visible tab after a while: refresh now rather than show stale blips.
+    const onVis = () => { if (!document.hidden && Date.now() - dataRef.current.fetchedAt > POLL_MS) load(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { alive = false; clearInterval(t); document.removeEventListener('visibilitychange', onVis); };
   }, []);
 
   // draw loop
@@ -49,7 +59,12 @@ export default function LandingMiniRadar() {
     const cx = SIZE / 2, cy = SIZE / 2, radius = SIZE / 2 - 16;
     const scale = radius / RANGE_NM;
     let raf, running = true;
-    const io = new IntersectionObserver(([e]) => { running = e.isIntersecting; }, { threshold: 0 });
+    const io = new IntersectionObserver(([e]) => {
+      running = e.isIntersecting;
+      visibleRef.current = e.isIntersecting;
+      // Scrolled back into view after a while: refresh straight away.
+      if (e.isIntersecting && Date.now() - dataRef.current.fetchedAt > POLL_MS) loadRef.current?.();
+    }, { threshold: 0 });
     io.observe(canvas);
 
     const draw = () => {

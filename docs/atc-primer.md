@@ -224,7 +224,7 @@ clamped. *(reproduce anytime with `scripts/eval_eta.py`)*
 **How it's served safely — a real ML-systems trap avoided.** If we applied the correction
 to the *graded* prediction and then retrained on the newly-corrected data, the model would
 see near-zero error, learn a near-zero bias, and on the next deploy the correction would
-vanish — oscillating. So the always-on worker (the authoritative grader for JFK/LAX/LHR)
+vanish — oscillating. So the always-on worker (the authoritative grader for the tracked hub)
 grades `predEtaTs = raw ETA + model correction`, but **records the raw error for training**
 — the model always learns the full bias, and the correction stays stable. Go-arounds and
 diversions (a landing >30 min off the raw estimate) are **not graded** as ETA misses.

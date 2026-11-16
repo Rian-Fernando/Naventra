@@ -8,9 +8,11 @@ const BASE = import.meta.env.VITE_TRACKER_URL || '';
 
 export const trackerConfigured = !!BASE;
 
-// Hubs the always-on tracker monitors 24/7. Other airports show the local
-// per-session scorecard instead of the global one.
-export const TRACKED_HUBS = ['KJFK', 'KLAX', 'EGLL'];
+// Hubs the always-on tracker polls now (worker/wrangler.toml TRACKED_HUBS —
+// keep in step). adsb.lol's free key covers one hub every 2 minutes; LAX and
+// Heathrow were tracked Jul–Nov 2026 and their history stays in the dataset.
+// Other airports show the local per-session scorecard instead of the global one.
+export const TRACKED_HUBS = ['KJFK'];
 
 export async function fetchGlobalScorecard(icao) {
   if (!BASE) return null;

@@ -1,21 +1,46 @@
 # Naventra Tracker — always-on learning worker
 
-A Cloudflare Worker that runs **24/7 on a 1-minute cron**, independent of any
-browser. Each tick it polls live ADS-B and METARs for the tracked hubs (**JFK,
-LAX, LHR**), runs Naventra's exact prediction + grading engine (shared from
+A Cloudflare Worker that runs **24/7**, independent of any browser. Every two
+minutes it polls live ADS-B and METARs for the tracked hub (**JFK**; LAX and
+London Heathrow were also tracked Jul–Nov 2026), runs Naventra's exact
+prediction + grading engine (shared from
 `../src/engine/*`), grades landings and departures against reality, and updates a
 **shared self-learning model** in a free **D1** database. The frontend reads the
 global scorecard from this worker, so every visitor sees the same
 continuously-improving numbers.
 
-ADS-B comes from adsb.lol through the site's own relay (the same path every
-visitor's browser uses), then adsb.lol direct. adsb.fi deliberately blocks
-Cloudflare Workers, so the worker only re-probes it every 6 hours rather than
-route around the block. Requests identify themselves, stay ≥1.1 s apart per
-upstream and honour `Retry-After`.
+ADS-B comes from adsb.lol, which meters its API (Nov 2026: 500 requests/day per
+IP without a key, 1,000/day with a free key, 7,200/day with a free feeder key).
+With `ADSBLOL_API_KEY` set every request carries the key and goes direct;
+without one, the worker falls back to the site's relay and adsb.lol direct.
+adsb.fi deliberately blocks Cloudflare Workers, so the worker only re-probes it
+every 6 hours rather than route around the block. Requests identify
+themselves, stay ≥1.1 s apart per upstream and honour `Retry-After`; a daily
+budget guard (`ADSB_DAILY_CAP`) stops the tracker for the day rather than run
+past the limit.
+
+## Hubs, cadence and the adsb.lol key
+
+Set in `wrangler.toml` `[vars]`:
+
+| Var | Free key (now) | Feeder key |
+|---|---|---|
+| `TRACKED_HUBS` | `KJFK` | `KJFK,KLAX,EGLL` |
+| `TICK_EVERY_MIN` | `2` (~720 requests/day) | `1` (~4,320/day) |
+| `ADSB_DAILY_CAP` | `900` | `7000` |
+
+At a 2-minute cadence, touchdown time is estimated from the last airborne
+sample (not taken as "first seen on the ground") and locked departures are also
+caught on their takeoff roll, so grading stays nearly as precise as at 1 minute.
+Keep `src/lib/globalModel.js` `TRACKED_HUBS` in step so the console shows the
+global scorecard for the hubs being polled.
+
+To add the key: request one at https://www.adsb.lol/request, then
+`cd worker && npx wrangler secret put ADSBLOL_API_KEY`. `/api/health` shows
+`"adsbKey": true` and the day's request count (`adsbBudget`).
 
 ```
-scheduled()  every minute → tick each hub → lock / grade / learn / log → D1
+scheduled()  every TICK_EVERY_MIN min → tick each active hub → lock / grade / learn / log → D1
              → heartbeat → email alerts if something changed (Resend)
 fetch()      GET /api/scorecard?icao=KJFK   global accuracy + recent landings
              GET /api/model                  learned priors + departure flow (all hubs)
@@ -119,8 +144,9 @@ was generated and which airports have an adopted model.
 cd worker
 npm install
 npm run db:init:local           # create local SQLite schema
-npx wrangler dev --local        # http://localhost:8787
-curl http://localhost:8787/api/tick       # run one tick against live data
+echo 'TICK_EVERY_MIN = "1"' > .dev.vars        # tick on every trigger locally
+npx wrangler dev --local --test-scheduled   # http://localhost:8787
+curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"   # run one tick against live data
 curl http://localhost:8787/api/scorecard  # see accumulated results
 ```
 
@@ -144,10 +170,10 @@ Point the frontend at it: `VITE_TRACKER_URL=http://localhost:8787 npm run dev`
      ```
 4. **Deploy:** `npm run deploy`
    Wrangler prints the worker URL, e.g.
-   `https://naventra-tracker.<your-subdomain>.workers.dev`. The 1-minute cron
-   starts automatically.
-5. **Warm it up (optional):** hit `.../api/tick` a few times, or just wait — the
-   cron fills the database on its own.
+   `https://naventra-tracker.<your-subdomain>.workers.dev`. The cron starts
+   automatically. (There is no public endpoint to trigger a tick — every tick
+   spends the adsb.lol request budget.)
+5. **Add the adsb.lol key** (see above) — or leave it unset to run keyless.
 6. **Point the site at it:** in the Vercel project → Settings → Environment
    Variables, add `VITE_TRACKER_URL = https://naventra-tracker.<...>.workers.dev`,
    then redeploy. The scorecard flips to **GLOBAL · 24/7**.

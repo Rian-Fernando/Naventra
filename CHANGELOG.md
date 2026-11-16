@@ -6,6 +6,21 @@ All notable changes to Naventra are documented here. The format is based on
 
 ## [Unreleased]
 
+### Inside adsb.lol's new free limits
+- adsb.lol now meters its API (500 requests/day per IP without a key, 1,000/day with the
+  free key, 7,200/day for feeders); the tracker had been making ~4,300 a day. It now polls
+  New York JFK every two minutes (~720/day) with the free key (`ADSBLOL_API_KEY`, a Worker
+  secret) and a daily budget guard. LAX and London Heathrow keep their Jul–Nov 2026
+  history; hubs and cadence are two settings in `wrangler.toml` for when a feeder key
+  allows more.
+- Slower polling, same precision: touchdown time is estimated from the last airborne
+  sample (not "first seen on the ground"), and locked departures are also caught on their
+  takeoff roll.
+- The browser console now asks adsb.fi first (a per-second rate limit, not a daily count)
+  and polls every 10 s; the homepage mini-radar every 15 s, and only while it's on screen.
+- Removed the public `/api/tick` endpoint — anyone could have spent the request budget.
+- Copy says what's true: JFK graded 24/7; visitors still need no sign-up or key.
+
 ### Where flights come from and go — shown when it's real
 - Only 4% of JFK's strips showed an origin or destination. Measured on live traffic, the
   reasons were: private/GA flights (no published routes), stale routes for reused flight

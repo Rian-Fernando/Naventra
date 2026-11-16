@@ -2,10 +2,20 @@ name = "naventra-tracker"
 main = "src/index.js"
 compatibility_date = "2024-11-01"
 
-# Runs the tracker every minute: poll live ADS-B for each hub, lock/grade
-# predictions, update the learned model, persist to D1.
+# The cron fires every minute; the tracker works every TICK_EVERY_MIN minutes:
+# poll live ADS-B for each active hub, lock/grade/learn, persist to D1.
 [triggers]
 crons = ["* * * * *"]
+
+# adsb.lol meters its API (Nov 2026): 500 requests/day per IP without a key,
+# 1,000/day with the free key (Worker secret ADSBLOL_API_KEY), 7,200/day with a
+# free feeder key. One hub every 2 minutes is ~720 requests a day. With a feeder
+# key: TRACKED_HUBS = "KJFK,KLAX,EGLL" and TICK_EVERY_MIN = "1" (~4,320/day),
+# ADSB_DAILY_CAP = "7000". LAX and Heathrow keep their history either way.
+[vars]
+TRACKED_HUBS = "KJFK"
+TICK_EVERY_MIN = "2"
+ADSB_DAILY_CAP = "900"
 
 # D1 database binding. The database_id is filled in after `wrangler d1 create`
 # (see worker/README.md). Local `wrangler dev` uses a local SQLite file and

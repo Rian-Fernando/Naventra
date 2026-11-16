@@ -14,7 +14,9 @@ import { trackerConfigured, TRACKED_HUBS, fetchGlobalScorecard, fetchGlobalModel
 import { prefetchRoutes } from '../lib/route.js';
 
 const RADIUS_NM = 50;
-const LIVE_POLL_MS = 6000;
+// Every visitor shares the relay to the free feeds, so poll at a measured pace
+// — the scopes dead-reckon aircraft smoothly between updates.
+const LIVE_POLL_MS = 10000;
 // Retry backoff while the live feed is down, and how long last-known traffic may
 // stay on the scope before it is cleared. Naventra never substitutes simulated
 // traffic: no live data means an empty, clearly-labelled scope.

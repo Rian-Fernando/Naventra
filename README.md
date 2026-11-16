@@ -9,7 +9,7 @@ against what actually happened.
 [![CI](https://github.com/Rian-Fernando/Naventra/actions/workflows/ci.yml/badge.svg)](https://github.com/Rian-Fernando/Naventra/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/Rian-Fernando/Naventra/actions/workflows/codeql.yml/badge.svg)](https://github.com/Rian-Fernando/Naventra/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![API keys required: 0](https://img.shields.io/badge/API%20keys-0%20required-3ddc97)](#data-sources-all-free-no-api-keys)
+[![Cost: $0](https://img.shields.io/badge/cost-%240-3ddc97)](#data-sources-all-free)
 [![Live](https://img.shields.io/badge/live-naventra.rianfernando.com-4cc9f0)](https://naventra.rianfernando.com/live)
 
 **▶ Live: [naventra.rianfernando.com](https://naventra.rianfernando.com)** · [Live console](https://naventra.rianfernando.com/live) · [Operator's Guide](https://naventra.rianfernando.com/guide)
@@ -88,8 +88,10 @@ that runs the **same** engine 24/7 so the score keeps improving with no browser 
 
 ## Always-on learning & the open dataset
 
-A companion Cloudflare Worker (`worker/`) runs the engine on a 1-minute cron against JFK / LAX
-/ LHR, grading real landings and banking the learned model into a free **D1** database. Set
+A companion Cloudflare Worker (`worker/`) runs the engine every two minutes against JFK (it also
+covered LAX and London Heathrow, Jul–Nov 2026), grading real landings and departures and banking
+the learned model into a free **D1** database. The cadence fits adsb.lol's free API key (1,000
+requests a day); with a feeder key it goes back to every minute at all three hubs. Set
 `VITE_TRACKER_URL` and the frontend shows one continuously-improving global score; unset, it
 runs fully client-side with per-browser learning.
 
@@ -108,12 +110,12 @@ GitHub within the hour and emails (free, via Resend) if live data stalls or the 
 an hourly GitHub watchdog covers the worker itself. See [`worker/README.md`](worker/README.md)
 for the schema, alerts setup, deploy steps and a training recipe.
 
-## Data sources (all free, no API keys)
+## Data sources (all free)
 
 | Feed | Source | Notes |
 |---|---|---|
-| Live traffic (primary) | [adsb.lol](https://adsb.lol) | Keyless; data under ODbL 1.0; reached via the `/proxy` relay |
-| Live traffic (fallback) | [adsb.fi](https://adsb.fi) | 1 req/s, personal non-commercial use; via proxy rewrites |
+| Live traffic — console | [adsb.fi](https://adsb.fi), then [adsb.lol](https://adsb.lol) | adsb.fi: 1 req/s, personal non-commercial use. Both via the `/proxy` relay (neither sends CORS headers); no key needed in the browser |
+| Live traffic — tracker | [adsb.lol](https://adsb.lol) | free API key (1,000 requests/day, a Worker secret); data under ODbL 1.0 |
 | Weather | [NOAA / NWS](https://aviationweather.gov) METAR + TAF | real observations & forecasts |
 | Flight routes | [adsbdb.com](https://adsbdb.com) | callsign → origin/destination, shown only when it fits the aircraft's position (flight numbers get reused); displayed live, never stored — route data © David Taylor & Jim Mason |
 | Airports & runways | [OurAirports](https://ourairports.com/data/) | public domain, generated at build time |

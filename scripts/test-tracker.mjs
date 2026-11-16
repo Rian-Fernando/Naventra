@@ -7,6 +7,7 @@
 
 import { planAlerts, runAlerts, planDatabaseAlert, alertDatabase, resetDatabaseStreak, DOWN_AFTER_MS, MODEL_STALE_MS, fmtDur } from '../worker/src/alerts.js';
 import { datasetRows } from '../worker/src/store.js';
+import { dayBudget, activeHubs, knownHubs } from '../worker/src/budget.js';
 import { AIRPORTS } from '../src/data/airports.js';
 import { allocateRunways } from '../src/engine/atc.js';
 import {
@@ -236,6 +237,24 @@ const climbOut = (ap, end, id, distNm = 1.5) => {
   check('expert memory is bounded (decay)', s.near.n < 101 && s.near.ok / s.near.n > 0.99 && s.flow.ok / s.flow.n < 0.01);
   const total = Object.values(dm.cells[c]).reduce((a, b) => a + b, 0);
   check('cell memory is bounded (halving)', total <= 61, `total=${total}`);
+}
+
+// ------------------------------------------------- hubs + adsb.lol budget ---
+{
+  check('default: only JFK is polled', activeHubs({}).join() === 'KJFK' && activeHubs({ TRACKED_HUBS: 'KJFK' }).join() === 'KJFK');
+  check('a feeder key setup can poll all three', activeHubs({ TRACKED_HUBS: 'KJFK, KLAX ,egll' }).join() === 'KJFK,KLAX,EGLL');
+  check('unknown airports are ignored', activeHubs({ TRACKED_HUBS: 'KJFK,XXXX' }).join() === 'KJFK' && activeHubs({ TRACKED_HUBS: 'nope' }).join() === 'KJFK');
+  check('paused hubs keep their history (API still serves them)', knownHubs({}).join() === 'KJFK,KLAX,EGLL');
+  const t0 = Date.parse('2026-11-15T10:00:00Z');
+  const b1 = dayBudget(null, t0, 900, 1);
+  check('a new day starts with an empty budget', b1.used === 0 && b1.allowed && b1.day === '2026-11-15');
+  check('budget allows the last request that fits', dayBudget({ day: '2026-11-15', used: 899 }, t0, 900, 1).allowed);
+  check('…and stops at the cap', !dayBudget({ day: '2026-11-15', used: 900 }, t0, 900, 1).allowed);
+  check('yesterday\'s count does not carry over', dayBudget({ day: '2026-11-14', used: 900 }, t0, 900, 1).allowed);
+  check('one hub every 2 minutes fits the free key with room to spare', (24 * 60) / 2 <= 900);
+  // Paused hubs must not page anyone: alerts only look at the hubs polled now.
+  const p = planAlerts({ now, tracked: ['KJFK'], hubs: { KJFK: live() }, modelGeneratedAt: fresh, state: afterSetup });
+  check('paused LAX/LHR raise no DOWN alert', p.emails.length === 0);
 }
 
 // ---------------------------------------------------------- dataset paging ---

@@ -1,21 +1,26 @@
 // Live ADS-B ingestion with multi-source failover.
 //
-// Primary  : adsb.lol — keyless, dynamic load-based limits, data under ODbL 1.0
-// Fallback : adsb.fi  — 1 req/s, personal non-commercial use, cite + link adsb.fi
-// Both are reached through the /proxy/* rewrites (no CORS): the vite dev proxy
-// locally, vercel.json / netlify.toml in prod.
+// Primary  : adsb.fi  — rate-limited (1 req/s), not metered per day; personal
+//            non-commercial use, cite + link adsb.fi
+// Fallback : adsb.lol — metered: 500 requests/day per IP without a key (data
+//            under ODbL 1.0)
+// Neither sends CORS headers, so both are reached through the site's /proxy/*
+// rewrites (the vite dev proxy locally, vercel.json / netlify.toml in prod) —
+// which means every visitor shares the relay's IPs. adsb.fi goes first because
+// its limit is a rate, not a daily count; adsb.lol's key belongs to the tracker
+// and is never exposed here.
 //
 // airplanes.live was removed: it closed its public API to non-feeders (Aug 2026).
 // Both sources return the same readsb JSON schema, so one normalizer serves both.
 
 const SOURCES = [
   {
-    id: 'adsb.lol',
-    url: (lat, lon, r) => `/proxy/adsblol/v2/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${Math.round(r)}`,
-  },
-  {
     id: 'adsb.fi',
     url: (lat, lon, r) => `/proxy/adsbfi/api/v3/lat/${lat.toFixed(4)}/lon/${lon.toFixed(4)}/dist/${Math.round(r)}`,
+  },
+  {
+    id: 'adsb.lol',
+    url: (lat, lon, r) => `/proxy/adsblol/v2/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${Math.round(r)}`,
   },
 ];
 

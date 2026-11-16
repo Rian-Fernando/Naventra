@@ -8,7 +8,7 @@ import { ArrowRight, ArrowLeft, Compass } from 'lucide-react';
 const KEY = 'nv-tour-v1';
 
 const STEPS = [
-  { sel: '.facility', title: 'Choose an airport', body: 'Pick any of 15 major airports. The ◉ hubs (JFK / LAX / London Heathrow) run the always-on 24/7 model; the others learn during your session.' },
+  { sel: '.facility', title: 'Choose an airport', body: 'Pick any of 15 major airports. The ◉ hub (JFK) runs the always-on 24/7 model; the others learn during your session.' },
   { sel: '.radar-panel', panel: 'radar', title: 'The live radar', body: 'Every target is a real aircraft from live ADS-B. In 3D drag to orbit and scroll to zoom; in 2D scroll to zoom and drag to pan. Colours: green = arriving, cyan = departing, grey = enroute, purple = on the ground, red = conflict or emergency.' },
   { sel: '[data-tour="strips"]', panel: 'strips', title: 'Flight strips', body: 'Arrivals / departures / ground, ordered by landing sequence. Each strip shows altitude, speed, distance, ETA, runway and stand — and #1, #2… is the landing order. Emergencies float to the top.' },
   { sel: '[data-tour="runways"]', panel: 'runways', title: 'Runway allocation', body: 'The active configuration chosen from the live wind — each runway’s role (ARR / DEP), its head/crosswind components and whether it has an ILS.' },

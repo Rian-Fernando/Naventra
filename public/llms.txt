@@ -6,7 +6,7 @@
 
 Naventra ingests live aircraft positions and weather, runs a controller's decision loop, and continuously measures itself against reality:
 
-- Streams real ADS-B transponder data and live METAR/TAF weather from free, keyless, public sources.
+- Streams real ADS-B transponder data and live METAR/TAF weather from free, public sources.
 - Allocates the active runway configuration from head/crosswind, sequences the arrival flow, assigns gates, and monitors separation with closest-point-of-approach math.
 - Predicts each flight's runway, touchdown time and landing order, locks the prediction when the aircraft commits to final, then grades it against the observed landing.
 - Runs an always-on cloud model that learns from every real landing, so accuracy improves on its own.
@@ -22,9 +22,9 @@ Naventra ingests live aircraft positions and weather, runs a controller's decisi
 
 - Frontend: a Vite + React single-page app with a three.js real-time 3D radar.
 - Engine: a deterministic expert system plus an online learning layer — no black-box LLM in the control loop.
-- Always-on model: a Cloudflare Worker + D1 database that tracks and grades real operations every minute.
+- Always-on model: a Cloudflare Worker + D1 database that tracks and grades real operations at New York JFK every two minutes (LAX and London Heathrow were also tracked July–November 2026).
 - The touchdown-ETA model is validated live at +14.5 points over the raw engine on identical flights.
-- Cost: $0 — every data source is free and needs no API key.
+- Cost: $0 — every data source is free; the always-on tracker uses adsb.lol's free API key.
 
 ## Links
 
