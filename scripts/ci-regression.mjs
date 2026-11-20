@@ -229,8 +229,8 @@ check('etaVec all finite', etaVec({ dist_nm: 10, gs_kt: 140, head_kt: 8, wake: '
 // ETA outlier void: a landing >30 min off the raw estimate is not graded.
 {
   const t = 1_700_000_000_000;
-  const normal = grading.gradeItems({ predRunway: '22L', predEtaTs: t, rawEtaTs: t, sampleSeq: 1 }, '22L', t + 60_000, ['22L']);
-  const outlier = grading.gradeItems({ predRunway: '22L', predEtaTs: t, rawEtaTs: t, sampleSeq: 1 }, '22L', t + 40 * 60_000, ['22L']);
+  const normal = grading.gradeItems({ predRunway: '22L', predEtaTs: t, rawEtaTs: t, order: null }, '22L', t + 60_000, ['22L']);
+  const outlier = grading.gradeItems({ predRunway: '22L', predEtaTs: t, rawEtaTs: t, order: null }, '22L', t + 40 * 60_000, ['22L']);
   check('normal landing grades ETA', normal.some((i) => i.cat === 'eta'));
   check('30min+ outlier voids ETA grade', !outlier.some((i) => i.cat === 'eta'));
 }

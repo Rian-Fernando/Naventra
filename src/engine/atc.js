@@ -8,6 +8,7 @@ import { distNm, bearingDeg, velocityNmS, toLocalNm, cpa, angleDiff, windCompone
 import { airlineName } from '../data/airports.js';
 import { octantOf } from './octant.js';
 import { wakeCat, wakeSepNm, wakeDepartureSepSec, WAKE_LABEL } from './wake.js';
+import { neighborTraffic } from './neighbors.js';
 
 export const PHASES = ['GROUND', 'DEPARTURE', 'ENROUTE', 'ARRIVAL', 'APPROACH', 'FINAL'];
 
@@ -136,7 +137,7 @@ export function takeoffRollEnd(ac, airport) {
 export function inferActiveArrivals(annotated, airport) {
   const ends = new Map();
   for (const a of annotated) {
-    if (a.onGround || a.altFt == null || a.gs < 60) continue;
+    if (a.onGround || a.altFt == null || a.gs < 60 || a.otherField) continue;
     if (a.agl == null || a.agl > 4000 || a.distNm > 12) continue;
     if (a.vs > 400) continue;       // descending/level, not climbing out (departure)
     if (a.closing < 0.2) continue;  // tracking toward the field, not away
@@ -257,7 +258,11 @@ export function allocateRunways(airport, wx, observed = null, observedDep = null
 // `depPlanner(ac, runways)` (departures.js makeDeparturePlanner) picks the
 // departure runway for flights on the ground; without one, departures are
 // dealt across the DEP runways in turn.
-export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = () => 0, depPlanner = null) {
+// `opts.otherMemory` (Map id → earlier neighbors.js verdict) and
+// `opts.departedHome(id)` let the browser keep a neighbouring airport's
+// climb-out tagged after it stops looking like one; the stateless tracker
+// passes neither.
+export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = () => 0, depPlanner = null, opts = {}) {
   const arrRwys = runways.filter((r) => r.role.includes('ARR'));
   const fieldElev = airport.elevFt;
   const fieldR = fieldRadiusNm(airport);
@@ -271,6 +276,13 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
 
     // Rotorcraft use pads, not the arrival flow — never runway-sequenced.
     const heli = ac.category === 'A7';
+    // Another airport's traffic (LaGuardia's arrivals, Newark's departures…):
+    // shown, separated and deconflicted, but never sequenced or counted here.
+    const otherField = heli ? null : neighborTraffic(ac, airport, {
+      fieldR,
+      remembered: opts.otherMemory?.get(ac.id) || null,
+      departedHome: !!opts.departedHome?.(ac.id),
+    });
     let phase = 'ENROUTE';
     if (ac.onGround || (agl != null && agl < 150 && ac.gs < 60)) phase = 'GROUND';
     else if (heli) phase = 'ENROUTE';
@@ -285,6 +297,7 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
     // Leaving the area and not descending: a descending aircraft moving away
     // (an arrival on its downwind leg) is not a departure.
     else if (agl != null && d < 30 && closing < -0.2 && (ac.vs > 300 || (agl < 10000 && ac.vs > -300))) phase = 'DEPARTURE';
+    if (otherField && phase !== 'GROUND') phase = 'ENROUTE';
 
     // Inbound ETA models the deceleration to approach speed instead of
     // assuming current ground speed holds to the threshold.
@@ -294,7 +307,7 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
       : null;
     // On this airport's surface (not parked at a neighbouring field in range).
     const atField = phase === 'GROUND' && d <= fieldR;
-    return { ...ac, distNm: d, brgFromField: (brgTo + 180) % 360, agl, phase, etaMin, closing, atField, wake: wakeCat(ac.type, ac.category) };
+    return { ...ac, distNm: d, brgFromField: (brgTo + 180) % 360, agl, phase, etaMin, closing, atField, otherField, wake: wakeCat(ac.type, ac.category) };
   });
 
   // Arrival sequencing: order the inbound flows by ETA and distribute across
@@ -583,7 +596,12 @@ export function generateEvents(prev, next, airport, runways, conflicts, prevConf
         }
         break;
       case 'ENROUTE':
-        if (oldPhase === 'DEPARTURE') {
+        if (ac.otherField && ac.otherField.role === 'arr' && ['ARRIVAL', 'APPROACH', 'FINAL'].includes(oldPhase)) {
+          const of = ac.otherField;
+          decisions.push(decision('HANDOFF', 'info', `${cs} released to ${of.iata || of.icao}`,
+            `${of.rwy ? `Established on ${of.iata || of.icao} runway ${of.rwy} final` : `Low over ${of.iata || of.icao}`} — ${of.name} traffic, removed from the ${airport.iata} arrival sequence.`,
+            [cs]));
+        } else if (oldPhase === 'DEPARTURE' && !ac.otherField) {
           decisions.push(decision('HANDOFF', 'info', `${cs} handed to Center`,
             `Departure complete at ${fmtAlt(ac.altFt)}, climbing ${ac.vs > 0 ? '+' + Math.round(ac.vs) : ''}fpm — control transferred to enroute sector.`, [cs]));
           comms.push(comm(fA, app, `${rn}, radar service terminated, contact Center, good day.`, 'atc'));

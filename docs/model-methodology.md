@@ -37,9 +37,32 @@ Every row is validated before training (`scripts/train_model.py::validate`, cove
 
 The weekly report (`docs/model-report.md`) lists how many rows each check rejected.
 Labels are internally consistent (`runway_ok` always agrees with actual-vs-predicted).
-The ETA model has its own validator (`validate_eta`): it needs a usable touchdown time but
-not a classified runway, so landings whose runway couldn't be told from the track still
-teach it.
+The ETA model has its own validator (`validate_eta`): it needs a usable touchdown time and
+a touchdown **confirmed at the airport itself** (`landed_here`).
+
+**The neighbouring-airport finding (Nov 2026).** Until then the tracker graded any
+touchdown inside its radar range. New York's airports sit 9–18 nm apart, so Newark,
+LaGuardia and Teterboro arrivals descending through JFK's approach airspace were locked as
+JFK arrivals and graded when they landed at home — about half of all "JFK landings"
+(LAX's neighbours did the same; Heathrow's are further away). Their runway never matched
+one of JFK's, so the runway grades and the runway model were unaffected, but ETA and
+landing-order grades were not, and those landings were half of the ETA model's training
+data. Since then:
+
+- the engine recognises another airport's traffic (`src/engine/neighbors.js`: on its
+  final, low over it, or lifting off it — with runway geometry for every airport within
+  45 nm, from OurAirports), and never sequences, counts or grades it;
+- a prediction is graded only if the flight touches down on the airport's own runways —
+  anything else voids it — and new rows carry `at_field: 1`;
+- older rows count only when the landing runway was identified (the only record of a
+  touchdown at the hub itself), so the trainer drops 58,780 of 143,341 rows for the ETA
+  model, trends and drift; the scorecard's all-time ETA and landing-order counters were
+  rebuilt from the same confirmed landings.
+
+On confirmed JFK landings, ETAs were within ±2.5 min ~90% of the time over the last
+trained window (97% in the last week) — not the ~65% the mixed data suggested. One input
+shifts with the fix: `arr_rate_1h` now counts only landings at the airport (it counted the
+neighbours' too), which the recency weighting absorbs as new rows arrive.
 
 ## 3. Is one week enough? Do we wait a year for four seasons?
 
@@ -148,7 +171,8 @@ within two simulated hours.
 ## 7. Safeguards summary
 
 - Self-tests (`scripts/test_train.py`) run before every training in CI.
-- Strict row validation; only clean, sufficient rows train the model.
+- Strict row validation; only clean, sufficient rows train the model — and only landings
+  confirmed at the airport itself.
 - Honest dual evaluation (time-split gates deployment; random-split shows the ceiling).
 - Per-airport adopt-gate; the expert engine is the safe default everywhere else.
 - Weekly retrain on the full history; the gate re-evaluates on the most recent 21 days.

@@ -71,6 +71,7 @@ export function useAtcSystem() {
     opsLog: [],
     depFlow: [],     // recent climb-outs [id, runwayEnd, ts] — the observed departure flow
     seenDep: new Map(), // aircraft id → when we watched it take off from this field
+    seenOther: new Map(), // aircraft id → { of: neighbouring airport verdict, ts }
     depModel: null,  // the 24/7 tracker's learned departure experts (tracked hubs)
   });
 
@@ -86,10 +87,21 @@ export function useAtcSystem() {
   const runEngine = useCallback((tracks, ap, isLive) => {
     const r = ref.current;
     const priorFn = r.globalPrior || runwayPrior;
+    const now = Date.now();
+    // Another airport's traffic stays tagged once seen: a LaGuardia climb-out
+    // stops looking like one within a couple of minutes, an arrival on its
+    // final for a few more (see engine/neighbors.js).
+    const otherMemory = new Map();
+    for (const [id, m] of r.seenOther) {
+      if (now - m.ts < (m.of.role === 'dep' ? 25 : 10) * 60000) otherMemory.set(id, m.of);
+      else r.seenOther.delete(id);
+    }
+    const departedHome = (id) => now - (r.seenDep.get(id) ?? -Infinity) < 45 * 60000;
+    const engineOpts = { otherMemory, departedHome };
     // Two passes: allocate from wind, read the config off aircraft actually on
     // final, then re-allocate to that observed configuration and re-annotate.
     const baseRwys = allocateRunways(ap, r.weather);
-    let annotated = annotateAircraft(tracks, ap, baseRwys, r.gateMap, priorFn);
+    let annotated = annotateAircraft(tracks, ap, baseRwys, r.gateMap, priorFn, null, engineOpts);
     const obsNow = inferActiveArrivals(annotated, ap);
     // Sticky config: real configurations hold for hours, so keep the last
     // observed one through quiet ticks instead of snapping back to the wind guess.
@@ -99,16 +111,20 @@ export function useAtcSystem() {
     // Departures the same way: the runways traffic is actually climbing out of
     // (seeded from the 24/7 tracker at the hubs it watches) decide the DEP roles
     // and which runway each taxiing flight is planned for.
-    const now = Date.now();
     r.depFlow = observeDepartures(r.depFlow, annotated, ap, now).flow;
     const depW = flowWeights(r.depFlow, now);
     const rwys = observed.size || depW.size ? allocateRunways(ap, r.weather, observed.size ? observed : null, depW) : baseRwys;
-    annotated = annotateAircraft(tracks, ap, rwys, r.gateMap, priorFn, makeDeparturePlanner(ap, depW, r.depModel));
+    annotated = annotateAircraft(tracks, ap, rwys, r.gateMap, priorFn, makeDeparturePlanner(ap, depW, r.depModel), engineOpts);
     // Keep "left from here" on flights we watched take off, after they climb
     // out of the window where the runway can be read off the track.
     for (const a of annotated) {
       if (a.depFromField) r.seenDep.set(a.id, now);
       else if (a.phase !== 'GROUND' && now - (r.seenDep.get(a.id) ?? -Infinity) < 45 * 60000) a.depFromField = true;
+      if (a.otherField && a.otherField.role !== 'gnd') {
+        const was = r.seenOther.get(a.id);
+        // Refresh only on fresh evidence, so a remembered verdict still expires.
+        if (!was || was.of !== a.otherField) r.seenOther.set(a.id, { of: a.otherField, ts: now });
+      } else if (a.onGround) r.seenOther.delete(a.id);
     }
     if (r.seenDep.size > 400) for (const [id, t] of r.seenDep) if (now - t > 45 * 60000) r.seenDep.delete(id);
     r.runways = rwys;
@@ -146,9 +162,10 @@ export function useAtcSystem() {
       for (const a of annotated) {
         const was = prev.get(a.id);
         if (!was) continue;
-        if ((was.phase === 'FINAL' || was.phase === 'APPROACH') && a.phase === 'GROUND') {
+        // This field's movements only — not LaGuardia's, nine miles away.
+        if ((was.phase === 'FINAL' || was.phase === 'APPROACH') && a.phase === 'GROUND' && a.atField) {
           r.opsLog.push({ ts: now2, type: 'arr', runway: was.runway || a.runway || null });
-        } else if (was.phase === 'GROUND' && a.phase === 'DEPARTURE') {
+        } else if (was.phase === 'GROUND' && was.atField && a.phase === 'DEPARTURE') {
           r.opsLog.push({ ts: now2, type: 'dep', runway: departureEnd(a, ap) || was.runway || null });
         }
       }
@@ -191,6 +208,7 @@ export function useAtcSystem() {
     r.depFlow = [];
     r.depModel = null;
     r.seenDep = new Map();
+    r.seenOther = new Map();
     setAircraft([]);
     setConflicts([]);
     setDecisions([]);

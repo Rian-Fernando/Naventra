@@ -10,7 +10,7 @@ const SOURCES = [
   ['Live aircraft (ADS-B)', 'adsb.fi · adsb.lol', 'Community ADS-B receiver networks, free, with automatic failover between them. Your browser\u2019s live view needs no key; the always-on tracker uses adsb.lol\u2019s free API key. Every target on the radar is a real aircraft broadcasting its own position.'],
   ['Weather (METAR & TAF)', 'NOAA / NWS Aviation Weather Center', 'The official U.S. government aviation weather service. Drives runway allocation and the forecast outlook.'],
   ['Flight routes', 'adsbdb.com', 'Free, keyless callsign → origin/destination lookups, shown only when the route fits where the aircraft actually is — airlines reuse flight numbers, so a route on file can belong to a different flight. Looked up by your browser and displayed live; never stored or redistributed.'],
-  ['Airports & runways', 'OurAirports (public domain)', 'Runway thresholds, headings, lengths and frequencies. Exact geometry is generated from this dataset at build time — nothing is hand-entered.'],
+  ['Airports & runways', 'OurAirports (public domain)', 'Runway thresholds, headings, lengths and frequencies — for each hub and every airport within 45 nm of it, so LaGuardia\'s and Newark\'s traffic is recognised as theirs. Exact geometry is generated from this dataset at build time — nothing is hand-entered.'],
 ];
 
 function Privacy() {

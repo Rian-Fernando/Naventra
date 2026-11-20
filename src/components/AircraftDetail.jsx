@@ -53,8 +53,16 @@ export default function AircraftDetail({ aircraft, airport, onClose }) {
     arrClock = clockZ(min * 60000);
   }
 
+  // Another airport's traffic (engine/neighbors.js): say so plainly.
+  const of = a.otherField;
+  const ofName = of ? `${(of.name || '').replace(/\s+(International\s+)?Airport$/i, '') || of.iata || of.icao}${of.iata ? ` (${of.iata})` : ''}` : null;
+  const ofLine = !of ? null
+    : of.role === 'arr' ? `${ofName} traffic — ${of.rwy ? `on final for runway ${of.rwy}` : 'landing there'}. Not in ${airport.iata}'s arrival sequence.`
+      : of.role === 'dep' ? `Departed ${ofName}${of.rwy ? `, runway ${of.rwy}` : ''} — passing through ${airport.iata}'s airspace.`
+        : `On the ground at ${ofName}.`;
+
   const rows = [
-    ['Phase', a.phase],
+    ['Phase', of ? `${of.iata || of.icao} ${of.role === 'arr' ? 'ARRIVAL' : of.role === 'dep' ? 'DEPARTURE' : 'GROUND'}` : a.phase],
     ['Altitude', a.onGround ? 'ON GROUND' : fmtAltitude(a.altFt, settings.altitude)],
     ['Ground speed', fmtSpeed(a.gs, settings.speed)],
     ['Track', `${Math.round(a.track)}°`],
@@ -65,7 +73,7 @@ export default function AircraftDetail({ aircraft, airport, onClose }) {
     a.seq != null ? ['Landing seq', `#${a.seq}`] : null,
     a.runway ? ['Runway', a.runway] : null,
     a.gate ? ['Proposed stand', `${a.gate} (engine)`] : null,
-    a.etaMin != null && a.phase !== 'DEPARTURE' ? ['ETA field', fmtDur(a.etaMin)] : null,
+    a.etaMin != null && a.phase !== 'DEPARTURE' && !of ? ['ETA field', fmtDur(a.etaMin)] : null,
     ete ? ['ETE to dest', ete] : null,
     arrClock && ete ? ['Est. arrival', arrClock] : null,
     distToDest ? ['Dist to dest', fmtDist(distToDest, settings.distance, 0)] : null,
@@ -97,6 +105,9 @@ export default function AircraftDetail({ aircraft, airport, onClose }) {
             {rd.source === 'seen' && <> · {to ? `seen on its approach to ${to.iata || to.icao}` : `seen climbing out of ${from.iata || from.icao}`}</>}
           </div>
         </div>
+      )}
+      {ofLine && (
+        <div className="sel-route sel-route-none"><Plane size={11} /> {ofLine}</div>
       )}
       {rd.source !== 'route' && rd.note && (
         <div className="sel-route sel-route-none"><Plane size={11} /> {rd.note}</div>

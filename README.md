@@ -28,7 +28,8 @@ track and every locked item is graded ✓/✗. The all-time and trailing-24h acc
 live, per category, with a rolling log. **It's an AI that publishes its own report card.**
 
 Kept honest: the console runs on live data only — no simulated traffic, no invented weather,
-no made-up confidence scores; go-arounds void their predictions; unclassifiable landings
+no made-up confidence scores; go-arounds void their predictions, and so do flights that turn
+out to be landing at a neighbouring airport (LaGuardia, Newark); unclassifiable landings
 are discarded rather than guessed; conflict advisories aren't graded — a controller resolving
 a predicted conflict is not a miss.
 

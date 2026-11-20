@@ -56,7 +56,11 @@ def line(ap, b):
 
 def main():
     rows = load(sys.argv[1] if len(sys.argv) > 1 else None)
+    # Touchdowns confirmed at the airport only: until Nov 2026 the tracker also
+    # graded landings at neighbouring airports (Newark, LaGuardia…), and older
+    # rows show a touchdown at the hub only through its identified runway.
     post = [prep(r) for r in rows if r["ts"] >= INTEGRATION_MS
+            and (r.get("at_field") == 1 or r.get("actual_runway"))
             and r.get("eta_err_sec") is not None and r.get("land_ts") and r.get("pred_eta_ts")]
     gradeable = [r for r in post if abs(r["raw_err"]) <= VOID_S]
     voided = [r for r in post if abs(r["raw_err"]) > VOID_S]

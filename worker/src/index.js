@@ -68,7 +68,7 @@ export default {
           const was = prev.hubs?.[r.icao] || {};
           state[r.icao] = r.error
             ? { ok: false, error: r.error.slice(0, 200), lastOkTs: was.lastOkTs || null, tracked: was.tracked ?? null, config: was.config || null, open: was.open ?? null }
-            : { ok: true, lastOkTs: now, tracked: r.tracked, graded: r.graded, locked: r.locked, source: r.source, config: r.config, open: r.open };
+            : { ok: true, lastOkTs: now, tracked: r.tracked, graded: r.graded, locked: r.locked, voided: r.voided, source: r.source, config: r.config, open: r.open };
         }
         const stmts = [saveTickStmt(env.DB, { ts: now, hubs: state, quota, everyMin: every })];
         const info = modelInfo();

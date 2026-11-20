@@ -52,14 +52,14 @@ export default function Guide() {
 
         <h2>How the AI is scored</h2>
         <ol className="guide-steps">
-          <li><b>Lock.</b> When an inbound flight enters the approach phase (~4–26nm out), the core's current plan is frozen as a prediction: <em>runway end, touchdown time, next-to-land order, and that the runway is in the active arrival set</em>. It cannot be revised afterwards.</li>
-          <li><b>Observe.</b> The flight lands (or vanishes below radar coverage on short final, which counts as landed). The actual runway is derived purely from the observed final track and centerline alignment — never from the prediction.</li>
-          <li><b>Grade.</b> Each locked item is scored ✓/✗: exact runway end; runway within the AI's active-arrival config; touchdown within ±2.5 minutes of the locked ETA; and whether the flight was next in the AI's landing queue for its runway when it touched down.</li>
+          <li><b>Lock.</b> When an inbound flight enters the approach phase (~4–26nm out), the core's current plan is frozen as a prediction: <em>runway end, touchdown time, its place in the landing order, and that the runway is in the active arrival set</em>. It cannot be revised afterwards.</li>
+          <li><b>Observe.</b> The flight touches down on this airport's runways (or vanishes below radar coverage on short final, lined up with one of them, which counts as landed). A flight that turns out to be another airport's — established on LaGuardia's final, or down at Newark — has its prediction voided, never graded. The actual runway is derived purely from the observed final track and centerline alignment — never from the prediction.</li>
+          <li><b>Grade.</b> Each locked item is scored ✓/✗: exact runway end; runway within the AI's active-arrival config; touchdown within ±2.5 minutes of the locked ETA; and whether the landing order held — every flight the AI had ahead of it on that runway at the last look was down first, and nothing else landed in between.</li>
         </ol>
         <p className="guide-note">
           Kept honest three ways: <b>only live traffic banks into the all-time score</b> (in SIM mode the AI
-          steers the traffic, so grades are shown but never persisted) · go-arounds void their predictions
-          rather than gaming them either direction · if the actual runway can't be determined confidently
+          steers the traffic, so grades are shown but never persisted) · go-arounds and landings at a
+          neighbouring airport void their predictions rather than gaming them either direction · if the actual runway can't be determined confidently
           from the data, the prediction is discarded instead of guessed. Conflict advisories are
           deliberately not graded — when a predicted conflict fails to materialize it usually means a real
           controller resolved it, which isn't a miss.

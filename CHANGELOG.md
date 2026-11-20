@@ -6,6 +6,28 @@ All notable changes to Naventra are documented here. The format is based on
 
 ## [Unreleased]
 
+### Only this airport's landings are graded
+- Found in the data: about half of the "JFK landings" the tracker graded were really at
+  Newark, LaGuardia or Teterboro. Their arrivals descend through JFK's approach airspace,
+  were locked as JFK arrivals, and any touchdown in radar range counted. Runway grades were
+  unaffected (their runway never matched one of JFK's); ETA and landing-order grades were
+  not — on confirmed JFK landings ETA was 75% and landing order 82% all-time, not 59% / 47%.
+- The engine now knows the airports around each hub (runway geometry for every airport
+  within 45 nm, from OurAirports) and recognises their traffic: established on one of their
+  finals, low over the field, or lifting off one of their runways. That traffic is no longer
+  sequenced, counted or given a JFK runway; its detail card shows `→ LGA` and says
+  "LaGuardia traffic — on final for runway 22". Both radar views draw the neighbouring
+  airports, muted.
+- A prediction is graded only if the flight touches down on the airport's own runways;
+  anything else voids it. Training rows now carry `at_field: 1`.
+- Landing order is judged the way a polled tracker can: at the last look before touchdown,
+  were the flights we had ahead of it down first, and did nothing else land on that runway
+  in between? The old rule ("it was #1 at the last look") called a flight wrong whenever
+  the one ahead landed between two polls.
+- The trainer learns ETA, trends and drift only from landings confirmed at the airport
+  (58,780 of 143,341 rows dropped); the all-time ETA and landing-order counters were
+  rebuilt from the confirmed landings.
+
 ### Inside adsb.lol's new free limits
 - adsb.lol now meters its API (500 requests/day per IP without a key, 1,000/day with the
   free key, 7,200/day for feeders); the tracker had been making ~4,300 a day. It now polls

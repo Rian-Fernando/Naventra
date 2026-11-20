@@ -5,7 +5,7 @@
 import { AIRPORTS } from '../../src/data/airports.js';
 import { allocateRunways, annotateAircraft, inferActiveArrivals, departureEnd, takeoffRollEnd } from '../../src/engine/atc.js';
 import { octantOf } from '../../src/engine/octant.js';
-import { classifyLandingRunway, gradeItems, estimateTouchdown } from '../../src/engine/grading.js';
+import { classifyLandingRunway, gradeItems, estimateTouchdown, onOurField, landingQueues, queueSnapshot, gradeOrder } from '../../src/engine/grading.js';
 import { etaCorrectionSec, ETA_OUTLIER_MS } from '../../src/engine/etaModel.js';
 import { observeDepartures, flowWeights, makeDeparturePlanner, learnDeparture, emptyDepModel } from '../../src/engine/departures.js';
 import { trainedModel } from './modelSource.js';
@@ -166,6 +166,10 @@ const LANDED_MEMORY_MS = 30 * 60000;
 
 // Safety valve on the open-state row (normally a few dozen records).
 const MAX_OPEN = 400;
+// Touchdowns here, kept with the open state so a landing's order can be judged
+// against everything that came down since its last sample.
+const LAND_LOG_MS = 45 * 60000;
+const LAND_LOG_MAX = 150;
 
 // Records are stored without their id (it's the map key).
 function toMap(obj) {
@@ -194,9 +198,11 @@ export async function tickAirport(env, icao) {
   // Open predictions: arrivals keyed by hex, departures by 'dep:'+hex. The first
   // tick after the one-row-per-hub change migrates the old per-row records.
   let open, openDep, legacy = false;
+  let landLog = [];
   if (openSaved) {
     open = toMap(openSaved.state.arr);
     openDep = toMap(openSaved.state.dep);
+    landLog = (openSaved.state.log || []).filter((l) => now - l.ts < LAND_LOG_MS);
   } else {
     legacy = true;
     open = await loadOpen(env.DB, icao);
@@ -298,15 +304,15 @@ export async function tickAirport(env, icao) {
   const statDelta = new Map();           // cat -> { n, correct }  (one upsert each)
   let graded = 0, locked = 0;
 
-  const finalize = (o, seenTs) => {
+  // Grade one touchdown on our field ({ o, seenTs, actualRunway, landedTs } —
+  // runway and time worked out for the whole sweep first, see below).
+  const finalize = ({ o, seenTs, actualRunway, landedTs }) => {
     recentlyLanded.set(`${icao}:${o.id}`, now);
-    const actualRunway = o.sample ? classifyLandingRunway(o.sample, airport) : null;
-    // Touchdown from the last airborne sample, not when it was first seen down.
-    const landedTs = estimateTouchdown(o.sample, seenTs, actualRunway, airport);
     if (o.sample) {
       recordLandingIntoModel(model, o.lockOct, actualRunway, (landedTs - o.rawEtaTs) / 1000);
+      const order = gradeOrder(o.id, o.sample, actualRunway, landedTs, landLog, stillInbound);
       const items = gradeItems(
-        { predRunway: o.predRunway, predEtaTs: o.predEtaTs, rawEtaTs: o.rawEtaTs, sampleSeq: o.sample.seq },
+        { predRunway: o.predRunway, predEtaTs: o.predEtaTs, rawEtaTs: o.rawEtaTs, order },
         actualRunway, landedTs, arrEnds
       );
       landingEntries.push({ icao, iata: airport.iata, ts: landedTs, callsign: o.callsign, items });
@@ -330,9 +336,10 @@ export async function tickAirport(env, icao) {
             eta_err_sec: etaErrSec,
             eta_ok: Math.abs(landedTs - o.rawEtaTs) > ETA_OUTLIER_MS ? null : (Math.abs(landedTs - o.predEtaTs) <= 150000 ? 1 : 0),
             seq_at_land: o.sample.seq ?? null,
-            seq_ok: o.sample.seq === 1 ? 1 : 0,
+            seq_ok: order ? (order.ok ? 1 : 0) : null,
             land_ts: landedTs,
             land_seen_ts: seenTs,
+            at_field: 1,
           },
         });
       }
@@ -340,6 +347,15 @@ export async function tickAirport(env, icao) {
     }
     open.delete(o.id);
   };
+
+  // Who is ahead of whom on each runway right now (sampled with every arrival).
+  const queues = landingQueues(annotated);
+  const stillInbound = (id, rwy) => {
+    const a = byId.get(id);
+    return !!a && !a.onGround && (a.phase === 'ARRIVAL' || a.phase === 'APPROACH' || a.phase === 'FINAL') && a.runway === rwy;
+  };
+  const down = [];                       // [open record, seen-down ts] touched down here this sweep
+  let voided = 0;
 
   // Aircraft currently in view.
   for (const ac of annotated) {
@@ -372,28 +388,50 @@ export async function tickAirport(env, icao) {
     }
 
     o.lastSeen = now;
+    // Another airport's traffic after all — established on LaGuardia's final,
+    // or down at Newark: void, it was never ours to grade.
+    if (ac.otherField) { open.delete(ac.id); voided++; continue; }
     if (!ac.onGround && ac.agl != null && ac.agl < 4000 && ac.gs > 60) {
-      o.sample = { lat: ac.lat, lon: ac.lon, track: ac.track, agl: ac.agl, distNm: ac.distNm, gs: ac.gs, ts: now, seq: ac.seqRwy ?? o.sample?.seq ?? null };
+      // seq/rwy/ahead survive from the last sample that had them — phase wobble
+      // right at the threshold must not erase the sequencing evidence.
+      const q = queueSnapshot(ac, queues);
+      o.sample = {
+        lat: ac.lat, lon: ac.lon, track: ac.track, agl: ac.agl, distNm: ac.distNm, gs: ac.gs, ts: now,
+        seq: q?.seq ?? o.sample?.seq ?? null, rwy: q?.rwy ?? o.sample?.rwy ?? null, ahead: q?.ahead ?? o.sample?.ahead ?? null,
+      };
     }
 
     if (ac.onGround || (ac.agl != null && ac.agl < 120 && ac.gs < 90)) {
-      finalize(o, now);
+      if (onOurField(ac, airport)) down.push([o, now]);
+      else { open.delete(ac.id); voided++; } // came down at another airport
     } else if (o.sample && ac.vs > 700 && ac.distNm > o.sample.distNm + 0.4 && ac.agl > o.sample.agl + 250) {
       open.delete(ac.id); // go-around → void
     }
   }
 
   // Open predictions whose aircraft dropped out of the feed — landed below
-  // coverage on short final if last seen low & close; else eventually expire.
+  // coverage on short final if last seen low, close and lined up with one of
+  // our runways; else eventually expire ungraded.
   for (const [id, o] of open) {
     if (byId.has(id)) continue;
     const age = now - o.lastSeen;
-    if (age > 90000 && o.sample && o.sample.agl < 2000 && o.sample.distNm < 5) {
-      finalize(o, o.lastSeen + 30000);
+    if (age > 90000 && o.sample && o.sample.agl < 2000 && o.sample.distNm < 5 && classifyLandingRunway(o.sample, airport)) {
+      down.push([o, o.lastSeen + 30000]);
     } else if (age > 15 * 60000) {
       open.delete(id);
     }
   }
+
+  // Touchdowns first, grades second: whether a flight landed in order depends
+  // on everything else that came down this sweep.
+  const touchdowns = down.map(([o, seenTs]) => {
+    const actualRunway = o.sample ? classifyLandingRunway(o.sample, airport) : null;
+    // Touchdown from the last airborne sample, not when it was first seen down.
+    return { o, seenTs, actualRunway, landedTs: estimateTouchdown(o.sample, seenTs, actualRunway, airport) };
+  });
+  for (const t of touchdowns) if (t.actualRunway) landLog.push({ id: t.o.id, rwy: t.actualRunway, ts: t.landedTs });
+  landLog = landLog.filter((l) => now - l.ts < LAND_LOG_MS).slice(-LAND_LOG_MAX);
+  for (const t of touchdowns) finalize(t);
 
   for (const g of depGrades) {
     landingEntries.push(g);
@@ -414,7 +452,7 @@ export async function tickAirport(env, icao) {
   for (const s of samples) stmts.push(recordSampleStmt(env.DB, s));
   for (const [cat, d] of statDelta) stmts.push(bumpStatsStmt(env.DB, icao, cat, d.n, d.correct));
   // All open predictions in one row — written only when something changed.
-  const openJson = JSON.stringify({ arr: fromMap(open), dep: fromMap(openDep) });
+  const openJson = JSON.stringify({ arr: fromMap(open), dep: fromMap(openDep), log: landLog });
   if (openJson !== openSaved?.raw) stmts.push(saveOpenStateStmt(env.DB, icao, openJson));
   if (legacy) stmts.push(clearLegacyOpenStmt(env.DB, icao));
   // The model only changes when a landing was graded this tick, so don't rewrite
@@ -424,7 +462,7 @@ export async function tickAirport(env, icao) {
 
   if (stmts.length) await env.DB.batch(stmts);
   return {
-    icao, graded, locked, samples: samples.length, tracked: annotated.length, source: tracks.source || null,
+    icao, graded, locked, voided, samples: samples.length, tracked: annotated.length, source: tracks.source || null,
     open: open.size + openDep.size,
     // What the traffic shows the field is using right now (for /api/health).
     config: { arr: arrEnds, dep: [...depW.keys()] },

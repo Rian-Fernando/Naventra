@@ -3,6 +3,7 @@ import { toLocalNm, deadReckon, fmtFL } from '../lib/geo.js';
 import { iconKind } from '../lib/aircraftIcon.js';
 import { emergencyInfo } from '../lib/filters.js';
 import { fmtAltScope, fmtSpeed } from '../lib/units.js';
+import { neighborsOf } from '../engine/neighbors.js';
 
 const ZMIN = 1, ZMAX = 12;
 const clampZ = (z) => Math.max(ZMIN, Math.min(ZMAX, z));
@@ -353,6 +354,32 @@ export default function RadarScope({ airport, aircraft, conflicts, runways, sele
         ctx.fillStyle = 'rgba(82, 100, 110, 0.9)';
         ctx.font = '8px "IBM Plex Mono", monospace';
         ctx.fillText('APRON · SCHEMATIC', cx - radius + 8, cy + radius - 8);
+      }
+
+      // -- neighbouring airports, muted: their runways and code. Their traffic is
+      // drawn as passing through (engine/neighbors.js); this shows where it's
+      // headed — LaGuardia nine miles north of JFK, Newark eighteen west.
+      if (!closeUp) {
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = 'rgba(143, 166, 177, 0.38)';
+        ctx.fillStyle = 'rgba(143, 166, 177, 0.62)';
+        ctx.font = '8px "IBM Plex Mono", monospace';
+        ctx.textAlign = 'center';
+        for (const n of neighborsOf(ap)) {
+          const [nx, ny] = toXY(n.lat, n.lon);
+          if (Math.hypot(nx - cx, ny - cy) > radius - 6) continue;
+          ctx.beginPath();
+          for (let i = 0; i < n.ends.length; i += 2) {
+            const a = n.ends[i], b = n.ends[i + 1];
+            ctx.moveTo(cx + a.x * scale, cy - a.y * scale);
+            ctx.lineTo(cx + b.x * scale, cy - b.y * scale);
+          }
+          ctx.stroke();
+          if (rangeNm <= 60) ctx.fillText(n.iata || n.icao, nx, ny + Math.max(9, n.r * scale) + 3);
+        }
+        ctx.restore();
       }
 
       // -- runways + extended centerlines

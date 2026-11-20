@@ -68,8 +68,15 @@ const sameAirport = (ep, ap) => !!ep && !!ap && ((ep.icao && ep.icao === ap.icao
 // airports sit 9–16 nm apart, so "within 40 nm of LaGuardia" can't tell a JFK
 // arrival from a LaGuardia one. On this field → the leg must touch this
 // airport; on final here → it must end here; seen climbing off our runway →
-// it must start here.
+// it must start here; seen on LaGuardia's final or lifting off Newark's runway
+// (engine/neighbors.js) → it must end or start there.
 function legConsistent(from, to, ac, airport) {
+  const of = ac.otherField;
+  if (of) {
+    if (of.role === 'arr') return sameAirport(to, of);
+    if (of.role === 'dep') return sameAirport(from, of);
+    return sameAirport(from, of) || sameAirport(to, of);
+  }
   if (ac.atField) return sameAirport(from, airport) || sameAirport(to, airport);
   if (ac.phase === 'FINAL') return sameAirport(to, airport);
   if (ac.depFromField) return sameAirport(from, airport);
@@ -112,6 +119,9 @@ export function describeRoute(route, ac, airport) {
   }
 
   // What the track itself shows.
+  const of = ac.otherField;
+  if (of?.role === 'arr') { out.to = asEndpoint(of); out.source = 'seen'; return out; }
+  if (of?.role === 'dep') { out.from = asEndpoint(of); out.source = 'seen'; return out; }
   if (ac.phase === 'FINAL') { out.to = here; out.source = 'seen'; return out; }
   if (ac.depFromField) { out.from = here; out.source = 'seen'; return out; }
   // Low and close to one of the airports on file — e.g. climbing out 1 nm from

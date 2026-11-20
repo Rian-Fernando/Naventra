@@ -212,12 +212,25 @@ def eta_feat(r, seasonal=False):
             math.sin(dy) if seasonal else 0.0, math.cos(dy) if seasonal else 0.0]
 
 
+def landed_here(r):
+    """Did this landing happen at the airport it is filed under? Rows since
+    Nov 2026 say so (`at_field`, set only for touchdowns on the field). Before
+    that the tracker graded ANY touchdown in radar range: about half of the
+    "JFK landings" were really at Newark, LaGuardia or Teterboro, and the only
+    record of a touchdown at the hub itself is a landing runway read off its own
+    approach. So older rows count only when that runway was identified."""
+    return r.get("at_field") == 1 or bool(r.get("actual_runway"))
+
+
 def validate_eta(r):
-    """ETA-model rows: the core checks plus a usable timing label. The landing
-    runway is NOT required — timing is known even when the runway isn't."""
+    """ETA-model rows: the core checks, a touchdown confirmed at this airport
+    (see landed_here — a Newark landing's timing says nothing about JFK's) and a
+    usable timing label."""
     why = validate_core(r)
     if why:
         return False, why
+    if not landed_here(r):
+        return False, "landed_elsewhere"
     e = r.get("eta_err_sec")
     if e is None:
         return False, "no_eta"
@@ -407,8 +420,14 @@ def main():
     # Validate everything up front and record why rows are dropped.
     reasons, eta_reasons = Counter(), Counter()
     clean_by_ap, eta_by_ap, all_by_ap = defaultdict(list), defaultdict(list), defaultdict(list)
+    elsewhere = 0
     for r in rows:
-        all_by_ap[r["icao"]].append(r)
+        # Trends, drift and the online-bias replay follow landings at the airport
+        # itself; touchdowns logged at its neighbours (pre-Nov 2026) are left out.
+        if landed_here(r):
+            all_by_ap[r["icao"]].append(r)
+        else:
+            elsewhere += 1
         ok, why = validate(r)
         if ok:
             clean_by_ap[r["icao"]].append(r)
@@ -442,7 +461,9 @@ def main():
               f"Generated {generated} from the always-on tracker's full history: **{len(rows):,}** graded "
               f"landings over **{span_days:.0f} days** ({month_of(first_ts)} → {month_of(last_ts)}, "
               f"{pages} page{'s' if pages != 1 else ''}). **{kept:,}** passed the runway-model checks and "
-              f"**{eta_kept:,}** the ETA-model checks.", "",
+              f"**{eta_kept:,}** the ETA-model checks. **{elsewhere:,}** rows have no touchdown confirmed at "
+              "the airport — mostly landings at a neighbouring airport (Newark, LaGuardia, Teterboro…) that the "
+              "tracker counted as its own until Nov 2026; they are not learned from.", "",
               "Seasons in the data: " + ", ".join(f"{k} ({seasons[k]:,})" for k in sorted(seasons, key=season_start.get)) + ". "
               + ("Day-of-year (seasonal) features are **on** — the data spans a full year." if seasonal else
                  f"Day-of-year features stay **off** until the data spans {SEASONAL_MIN_DAYS} days (about {unlock}): "
@@ -592,8 +613,8 @@ def main():
                    "actually graded at the time; *online* = the tracker's online bias as it runs now "
                    f"(each error clipped to ±{ETA_BIAS_CLIP_S} s, α {ETA_BIAS_ALPHA}), replayed over the same "
                    "landings — the baseline a model must beat; *model* = raw + this correction (fitted on the "
-                   "same clipped errors). ok% = within ±2.5 min, the scorecard window. Landings whose runway "
-                   f"couldn't be classified still have a valid touchdown time, so they train the ETA model too. "
+                   "same clipped errors). ok% = within ±2.5 min, the scorecard window. Only touchdowns confirmed "
+                   f"at the airport itself train it — a Newark landing's timing says nothing about JFK's. "
                    f"{eta_outliers:,} rows with |error| > 30 min (go-arounds / diversions / stale locks) were "
                    "excluded as bad ETA labels.", "",
                    "| Airport | rows | half-life | raw MAE | model MAE | raw ok% | graded ok% | online ok% | model ok% | z | adopt |",

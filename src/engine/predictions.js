@@ -1,16 +1,18 @@
 // AI prediction accuracy tracker.
 //
 // When a flight commits to the arrival flow (enters APPROACH), the decision
-// core's plan is LOCKED as a prediction: runway end, touchdown ETA, next-to-land
-// order, and the active-configuration claim. When the flight actually lands,
-// ground truth is derived purely from observed data — the runway from the final
-// track/centerline alignment, the time from touchdown detection — and every
-// locked prediction is graded. Only LIVE grades persist into the all-time
-// score; simulated traffic is graded for display but never banked (the AI
-// steering its own simulation would inflate the number).
+// core's plan is LOCKED as a prediction: runway end, touchdown ETA, and the
+// active-configuration claim; its place in the landing queue is sampled right
+// up to touchdown. When the flight actually lands — on this airport's runways;
+// one that comes down at a neighbouring airport voids its prediction — ground
+// truth is derived purely from observed data: the runway from the final
+// track/centerline alignment, the time from touchdown detection, the order
+// from who else came down. Only LIVE grades persist into the all-time score;
+// simulated traffic is graded for display but never banked (the AI steering
+// its own simulation would inflate the number).
 
 import { octantOf, recordLanding, recordEtaError, etaBiasSec, learnedLandings } from './learning.js';
-import { CATEGORIES, classifyLandingRunway, gradeItems, estimateTouchdown } from './grading.js';
+import { CATEGORIES, classifyLandingRunway, gradeItems, estimateTouchdown, onOurField, landingQueues, queueSnapshot, gradeOrder } from './grading.js';
 import { takeoffRollEnd } from './atc.js';
 
 export { CATEGORIES };
@@ -40,6 +42,7 @@ export class PredictionTracker {
     this.open = new Map();     // aircraft id → locked arrival prediction
     this.openDep = new Map();  // aircraft id → locked departure prediction
     this.landed = new Map();   // aircraft id → ts graded as an arrival (taxiing in ≠ departing)
+    this.log = [];             // touchdowns here [{ id, rwy, ts }] — judges landing order
     this.store = loadStore();  // persisted all-time (live only)
     this.session = emptyStats();
     this.events = [];
@@ -82,6 +85,10 @@ export class PredictionTracker {
       }
     }
 
+    // Who is ahead of whom on each runway right now.
+    const queues = landingQueues(aircraft);
+    const down = []; // [id, seen-down ts] touched down on this field this sweep
+
     for (const ac of aircraft) {
       const o = this.open.get(ac.id);
 
@@ -111,15 +118,24 @@ export class PredictionTracker {
 
       o.lastSeen = now;
 
+      // Another airport's traffic after all (established on LaGuardia's final,
+      // or down at Newark): void — it was never ours to grade.
+      if (ac.otherField) { this.open.delete(ac.id); continue; }
+
       // Keep the best "last airborne" sample for ground-truth classification.
-      // seq survives from the last tick that had one — phase wobble right at
-      // the threshold must not erase the sequencing evidence.
+      // seq/rwy/ahead survive from the last tick that had them — phase wobble
+      // right at the threshold must not erase the sequencing evidence.
       if (!ac.onGround && ac.agl != null && ac.agl < 4000 && ac.gs > 60) {
-        o.sample = { lat: ac.lat, lon: ac.lon, track: ac.track, agl: ac.agl, distNm: ac.distNm, gs: ac.gs, seq: ac.seqRwy ?? o.sample?.seq ?? null, ts: now };
+        const q = queueSnapshot(ac, queues);
+        o.sample = {
+          lat: ac.lat, lon: ac.lon, track: ac.track, agl: ac.agl, distNm: ac.distNm, gs: ac.gs, ts: now,
+          seq: q?.seq ?? o.sample?.seq ?? null, rwy: q?.rwy ?? o.sample?.rwy ?? null, ahead: q?.ahead ?? o.sample?.ahead ?? null,
+        };
       }
 
       if (ac.onGround || (ac.agl != null && ac.agl < 120 && ac.gs < 90)) {
-        this.grade(ac.id, now, arrEnds);
+        if (onOurField(ac, this.airport)) down.push([ac.id, now]);
+        else this.open.delete(ac.id); // came down at another airport
       } else if (o.sample && ac.vs > 700 && ac.distNm > o.sample.distNm + 0.4 && ac.agl > o.sample.agl + 250) {
         // Go-around: the landing premise is void — resequenced, not graded.
         this.open.delete(ac.id);
@@ -130,16 +146,32 @@ export class PredictionTracker {
       }
     }
 
-    // Flights that vanish on short final have landed below radar coverage.
+    // Flights that vanish on short final, lined up with one of our runways,
+    // have landed below radar coverage.
     for (const [id, o] of this.open) {
       if (seen.has(id)) continue;
       const age = now - o.lastSeen;
-      if (age > 25000 && o.sample && o.sample.agl < 2000 && o.sample.distNm < 5) {
-        this.grade(id, o.lastSeen + 30000, null);
+      if (age > 25000 && o.sample && o.sample.agl < 2000 && o.sample.distNm < 5 && classifyLandingRunway(o.sample, this.airport)) {
+        down.push([id, o.lastSeen + 30000]);
       } else if (age > 120000) {
         this.open.delete(id); // lost coverage — never graded
       }
     }
+
+    // Touchdowns first, grades second: whether a flight landed in order depends
+    // on everything else that came down this sweep.
+    const touchdowns = down.map(([id, seenTs]) => {
+      const o = this.open.get(id);
+      const actualRunway = o?.sample ? classifyLandingRunway(o.sample, this.airport) : null;
+      return { id, o, seenTs, actualRunway, landedTs: o?.sample ? estimateTouchdown(o.sample, seenTs, actualRunway, this.airport) : seenTs };
+    });
+    for (const t of touchdowns) if (t.actualRunway) this.log.push({ id: t.id, rwy: t.actualRunway, ts: t.landedTs });
+    this.log = this.log.filter((l) => now - l.ts < 45 * 60000).slice(-150);
+    const stillInbound = (id, rwy) => {
+      const a = seen.get(id);
+      return !!a && !a.onGround && (a.phase === 'ARRIVAL' || a.phase === 'APPROACH' || a.phase === 'FINAL') && a.runway === rwy;
+    };
+    for (const t of touchdowns) this.grade(t, t.seenTs === now ? arrEnds : null, stillInbound);
 
     return this.events;
   }
@@ -179,14 +211,11 @@ export class PredictionTracker {
     if (live) saveStore(this.store);
   }
 
-  grade(id, seenTs, arrEndsNow) {
-    const o = this.open.get(id);
+  // Grade one touchdown on this field ({ id, o, actualRunway, landedTs }).
+  grade({ id, o, actualRunway, landedTs }, arrEndsNow, stillInbound) {
     this.open.delete(id);
     this.landed.set(id, Date.now());
     if (!o || !o.sample) return;
-
-    const actualRunway = classifyLandingRunway(o.sample, this.airport);
-    const landedTs = estimateTouchdown(o.sample, seenTs, actualRunway, this.airport);
 
     // Feed the outcome back into the predictor — live landings only, so the
     // model learns the real facility, not our own simulation.
@@ -195,8 +224,9 @@ export class PredictionTracker {
       recordEtaError(this.airport.icao, (landedTs - o.rawEtaTs) / 1000);
     }
 
+    const order = gradeOrder(id, o.sample, actualRunway, landedTs, this.log, stillInbound);
     const items = gradeItems(
-      { predRunway: o.predRunway, predEtaTs: o.predEtaTs, rawEtaTs: o.rawEtaTs, sampleSeq: o.sample.seq },
+      { predRunway: o.predRunway, predEtaTs: o.predEtaTs, rawEtaTs: o.rawEtaTs, order },
       actualRunway, landedTs, arrEndsNow
     );
 

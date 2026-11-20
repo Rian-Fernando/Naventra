@@ -30,6 +30,8 @@ jobs:
         run: node scripts/test-tracker.mjs
       - name: Route display tests (published routes only when they fit)
         run: node scripts/test-routes.mjs
+      - name: Landing tests (neighbouring airports, on-field touchdowns, landing order)
+        run: node scripts/test-landings.mjs
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"

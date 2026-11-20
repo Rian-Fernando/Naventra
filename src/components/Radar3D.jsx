@@ -7,6 +7,7 @@ import { iconKind } from '../lib/aircraftIcon.js';
 import { emergencyInfo } from '../lib/filters.js';
 import { fmtAltScope, fmtSpeed } from '../lib/units.js';
 import { classifyWeather } from '../lib/weatherFx.js';
+import { neighborsOf } from '../engine/neighbors.js';
 
 // Merge mixed primitives: ExtrudeGeometry is non-indexed while Box/Cylinder/
 // Sphere are indexed, so normalise everything to non-indexed first.
@@ -251,6 +252,24 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
           blk.rotation.y = -ang;
           rwyGroup.add(blk);
         });
+      }
+      // Neighbouring airports: muted runway outlines. Their traffic is drawn
+      // passing through (engine/neighbors.js); this shows where it's headed.
+      if (rangeNm > 5) {
+        const pts = [];
+        for (const n of neighborsOf(ap)) {
+          if (Math.hypot(n.x, n.y) > rangeNm) continue;
+          for (let i = 0; i < n.ends.length; i += 2) {
+            const a = n.ends[i], b = n.ends[i + 1];
+            pts.push(new THREE.Vector3(a.x * k, 0.03, -a.y * k), new THREE.Vector3(b.x * k, 0.03, -b.y * k));
+          }
+        }
+        if (pts.length) {
+          rwyGroup.add(new THREE.LineSegments(
+            new THREE.BufferGeometry().setFromPoints(pts),
+            new THREE.LineBasicMaterial({ color: 0x8fa6b1, transparent: true, opacity: 0.5 })
+          ));
+        }
       }
       for (const rwy of rwys) {
         const lenU = (rwy.lenFt / FT_PER_NM) * k;
@@ -704,6 +723,18 @@ export default function Radar3D({ airport, aircraft, conflicts, runways, selecte
       for (let i = 1; i <= 4; i++) {
         const v = new THREE.Vector3(0, 0, -(RADIUS * i) / 4).project(camera);
         if (v.z < 1) octx.fillText(`${(rangeNm * i) / 4}nm`, (v.x * 0.5 + 0.5) * width + 4, (-v.y * 0.5 + 0.5) * height - 3);
+      }
+      // neighbouring airport codes, under their runways
+      if (rangeNm > 5) {
+        octx.font = '8px "IBM Plex Mono", monospace';
+        octx.fillStyle = 'rgba(143,166,177,0.62)';
+        octx.textAlign = 'center';
+        for (const n of neighborsOf(ap)) {
+          if (Math.hypot(n.x, n.y) > rangeNm) continue;
+          const v = new THREE.Vector3(n.x * k, 0, -n.y * k).project(camera);
+          if (v.z < 1) octx.fillText(n.iata || n.icao, (v.x * 0.5 + 0.5) * width, (-v.y * 0.5 + 0.5) * height + 12);
+        }
+        octx.textAlign = 'left';
       }
       octx.font = '11px "Barlow Condensed", sans-serif';
       for (const [t, ang] of [['N', 0], ['E', 90], ['S', 180], ['W', 270]]) {
