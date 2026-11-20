@@ -4,6 +4,7 @@ import { radioName } from '../engine/atc.js';
 import { distNm } from '../lib/geo.js';
 import { fetchRoute, getRoute } from '../lib/route.js';
 import { describeRoute, sameAirport, isAirlineCallsign } from '../lib/routeMatch.js';
+import { neighborsOf } from '../engine/neighbors.js';
 import { typicalSeats } from '../lib/aircraftMeta.js';
 import { WAKE_LABEL } from '../engine/wake.js';
 import { useSettings } from '../hooks/useSettings.jsx';
@@ -55,14 +56,21 @@ export default function AircraftDetail({ aircraft, airport, onClose }) {
 
   // Another airport's traffic (engine/neighbors.js): say so plainly.
   const of = a.otherField;
-  const ofName = of ? `${(of.name || '').replace(/\s+(International\s+)?Airport$/i, '') || of.iata || of.icao}${of.iata ? ` (${of.iata})` : ''}` : null;
-  const ofLine = !of ? null
-    : of.role === 'arr' ? `${ofName} traffic — ${of.rwy ? `on final for runway ${of.rwy}` : 'landing there'}. Not in ${airport.iata}'s arrival sequence.`
+  const apName = (ap) => `${(ap.name || '').replace(/\s+(International\s+)?Airport$/i, '') || ap.iata || ap.icao}${ap.iata ? ` (${ap.iata})` : ''}`;
+  const ofName = of ? apName(of) : null;
+  // …or, short of that, the learned airspace (engine/ownership.js) leaves it out.
+  const lo = !of ? a.likelyOther : null;
+  const loAp = lo?.guess ? neighborsOf(airport).find((n) => n.icao === lo.guess) : null;
+  const ofLine = of
+    ? (of.role === 'arr' ? `${ofName} traffic — ${of.rwy ? `on final for runway ${of.rwy}` : 'landing there'}. Not in ${airport.iata}'s arrival sequence.`
       : of.role === 'dep' ? `Departed ${ofName}${of.rwy ? `, runway ${of.rwy}` : ''} — passing through ${airport.iata}'s airspace.`
-        : `On the ground at ${ofName}.`;
+        : `On the ground at ${ofName}.`)
+    : lo ? `Probably ${loAp ? apName(loAp) : 'another airport\'s'} traffic — ${Math.round((1 - lo.pHere) * 100)}% of the ${lo.n} flights followed in from this part of the sky landed elsewhere. Left out of ${airport.iata}'s sequence.`
+      : null;
 
   const rows = [
-    ['Phase', of ? `${of.iata || of.icao} ${of.role === 'arr' ? 'ARRIVAL' : of.role === 'dep' ? 'DEPARTURE' : 'GROUND'}` : a.phase],
+    ['Phase', of ? `${of.iata || of.icao} ${of.role === 'arr' ? 'ARRIVAL' : of.role === 'dep' ? 'DEPARTURE' : 'GROUND'}`
+      : lo ? `${a.lockPhase} · ${loAp ? `LIKELY ${loAp.iata || loAp.icao}` : 'LIKELY ELSEWHERE'}` : a.phase],
     ['Altitude', a.onGround ? 'ON GROUND' : fmtAltitude(a.altFt, settings.altitude)],
     ['Ground speed', fmtSpeed(a.gs, settings.speed)],
     ['Track', `${Math.round(a.track)}°`],
@@ -73,7 +81,7 @@ export default function AircraftDetail({ aircraft, airport, onClose }) {
     a.seq != null ? ['Landing seq', `#${a.seq}`] : null,
     a.runway ? ['Runway', a.runway] : null,
     a.gate ? ['Proposed stand', `${a.gate} (engine)`] : null,
-    a.etaMin != null && a.phase !== 'DEPARTURE' && !of ? ['ETA field', fmtDur(a.etaMin)] : null,
+    a.etaMin != null && a.phase !== 'DEPARTURE' && !of && !lo ? ['ETA field', fmtDur(a.etaMin)] : null,
     ete ? ['ETE to dest', ete] : null,
     arrClock && ete ? ['Est. arrival', arrClock] : null,
     distToDest ? ['Dist to dest', fmtDist(distToDest, settings.distance, 0)] : null,

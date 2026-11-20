@@ -5,6 +5,7 @@ import { fetchMetar } from '../lib/weather.js';
 import { fetchTaf } from '../lib/forecast.js';
 import { buildOutlook } from '../engine/forecast.js';
 import { allocateRunways, annotateAircraft, detectConflicts, generateEvents, computeKpis, inferActiveArrivals, departureEnd } from '../engine/atc.js';
+import { ownEnabled } from '../engine/ownership.js';
 import { observeDepartures, flowWeights, makeDeparturePlanner, learnDeparture, emptyDepModel } from '../engine/departures.js';
 import { computeCapacity } from '../engine/capacity.js';
 import { detectSurface } from '../engine/surface.js';
@@ -73,6 +74,7 @@ export function useAtcSystem() {
     seenDep: new Map(), // aircraft id → when we watched it take off from this field
     seenOther: new Map(), // aircraft id → { of: neighbouring airport verdict, ts }
     depModel: null,  // the 24/7 tracker's learned departure experts (tracked hubs)
+    own: null,       // the 24/7 tracker's learned airspace (engine/ownership.js)
   });
 
   const pushEvents = useCallback((evDecisions, evComms) => {
@@ -97,7 +99,7 @@ export function useAtcSystem() {
       else r.seenOther.delete(id);
     }
     const departedHome = (id) => now - (r.seenDep.get(id) ?? -Infinity) < 45 * 60000;
-    const engineOpts = { otherMemory, departedHome };
+    const engineOpts = { otherMemory, departedHome, own: r.own, ownOn: ownEnabled(r.own) };
     // Two passes: allocate from wind, read the config off aircraft actually on
     // final, then re-allocate to that observed configuration and re-annotate.
     const baseRwys = allocateRunways(ap, r.weather);
@@ -207,6 +209,7 @@ export function useAtcSystem() {
     r.opsLog = [];
     r.depFlow = [];
     r.depModel = null;
+    r.own = null;
     r.seenDep = new Map();
     r.seenOther = new Map();
     setAircraft([]);
@@ -243,6 +246,7 @@ export function useAtcSystem() {
       r.globalPrior = priorFnFromModels(payload);
       const hub = payload.models?.[icao];
       if (hub?.rwy?.dep) r.depModel = hub.rwy.dep;
+      if (hub?.rwy?.own?.cells) r.own = hub.rwy.own;
       // Seed the departure flow with the tracker's recent climb-outs so a fresh
       // console knows the departure runways before it has seen a takeoff itself.
       if (Array.isArray(hub?.depFlow)) {

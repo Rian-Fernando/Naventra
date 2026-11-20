@@ -8,6 +8,7 @@ import { octantOf } from '../../src/engine/octant.js';
 import { classifyLandingRunway, gradeItems, estimateTouchdown, onOurField, landingQueues, queueSnapshot, gradeOrder } from '../../src/engine/grading.js';
 import { etaCorrectionSec, ETA_OUTLIER_MS } from '../../src/engine/etaModel.js';
 import { observeDepartures, flowWeights, makeDeparturePlanner, learnDeparture, emptyDepModel } from '../../src/engine/departures.js';
+import { emptyOwn, ownEnabled, regionOfFeatures, learnOwn } from '../../src/engine/ownership.js';
 import { trainedModel } from './modelSource.js';
 import {
   loadModel, priorFromModel, recordLandingIntoModel, etaBiasSec,
@@ -171,6 +172,10 @@ const MAX_OPEN = 400;
 const LAND_LOG_MS = 45 * 60000;
 const LAND_LOG_MAX = 150;
 
+// Regions an open arrival passed through on its way in (locks made before
+// they were recorded fall back to where they were locked).
+const regionsOf = (o) => (Array.isArray(o.regs) ? o.regs : [regionOfFeatures(o.features)]);
+
 // Records are stored without their id (it's the map key).
 function toMap(obj) {
   const m = new Map();
@@ -214,12 +219,18 @@ export async function tickAirport(env, icao) {
 
   const priorFn = priorFromModel(model);
   const depModel = model.rwy.dep || (model.rwy.dep = emptyDepModel());
+  // Learned airspace (src/engine/ownership.js): where flights locked in each
+  // part of the sky really came down, and whether leaving them out has earned
+  // its switch.
+  const own = model.rwy.own || (model.rwy.own = emptyOwn());
+  const engineOpts = { own, ownOn: ownEnabled(own) };
+  let ownDirty = false;
   const live = tracks.filter((t) => t.altFt == null || t.altFt < 60000);
   // Two passes: wind base config, then re-allocate to the configuration read
   // off traffic — aircraft on final for arrivals, climb-outs for departures
   // (matches how the field is really operating).
   const baseRwys = allocateRunways(airport, wx || {});
-  let annotated = annotateAircraft(live, airport, baseRwys, {}, priorFn);
+  let annotated = annotateAircraft(live, airport, baseRwys, {}, priorFn, null, engineOpts);
   const obsNow = inferActiveArrivals(annotated, airport);
   // Sticky config across the 1-min cron: hold the last observed configuration
   // through quiet ticks (real configs are stable for hours) rather than reverting
@@ -243,7 +254,7 @@ export async function tickAirport(env, icao) {
   if (added) { cfg = { ends: [], ts: 0, ...(cfg || {}), dep: flow }; cfgDirty = true; }
   const depW = flowWeights(flow, now);
   const rwys = observed.size || depW.size ? allocateRunways(airport, wx || {}, observed.size ? observed : null, depW) : baseRwys;
-  annotated = annotateAircraft(live, airport, rwys, {}, priorFn, makeDeparturePlanner(airport, depW, depModel));
+  annotated = annotateAircraft(live, airport, rwys, {}, priorFn, makeDeparturePlanner(airport, depW, depModel), engineOpts);
   const arrEnds = rwys.filter((r) => r.role.includes('ARR')).map((r) => r.activeEnd);
   const depEnds = rwys.filter((r) => r.role.includes('DEP')).map((r) => r.activeEnd);
 
@@ -308,6 +319,7 @@ export async function tickAirport(env, icao) {
   // runway and time worked out for the whole sweep first, see below).
   const finalize = ({ o, seenTs, actualRunway, landedTs }) => {
     recentlyLanded.set(`${icao}:${o.id}`, now);
+    learnOwn(own, regionsOf(o), 'here', !!o.ownEx); ownDirty = true;
     if (o.sample) {
       recordLandingIntoModel(model, o.lockOct, actualRunway, (landedTs - o.rawEtaTs) / 1000);
       const order = gradeOrder(o.id, o.sample, actualRunway, landedTs, landLog, stillInbound);
@@ -363,12 +375,17 @@ export async function tickAirport(env, icao) {
 
     if (!o) {
       // Lock when the flight commits to approach (needs live weather config).
-      if (wx && (ac.phase === 'APPROACH' || (ac.phase === 'FINAL' && ac.distNm > 4)) &&
-          ac.runway && ac.etaMin != null && ac.distNm > 3.5 && ac.distNm < 26) {
+      // A flight the learned airspace leaves out of the sequence is locked all
+      // the same (its own phase and runway): following it down is how the
+      // airspace keeps learning, and how the exclusion is scored.
+      const phase = ac.lockPhase || ac.phase;
+      const rwy = ac.runway || ac.lockRunway;
+      if (wx && (phase === 'APPROACH' || (phase === 'FINAL' && ac.distNm > 4)) &&
+          rwy && ac.etaMin != null && ac.distNm > 3.5 && ac.distNm < 26) {
         const rawEtaTs = now + ac.etaMin * 60000;
         const features = lockFeatures(ac, airport, {
           wx, rwys, arrEnds, depEnds, inbound: inboundCount, sector: sectorCount,
-          arrRate1h: arrRate, predRunway: ac.runway, predEtaTs: rawEtaTs,
+          arrRate1h: arrRate, predRunway: rwy, predEtaTs: rawEtaTs,
         });
         // Graded ETA = raw + trained-model correction (adopted airports), else the
         // online bias. rawEtaTs is kept for training so the model always learns
@@ -378,8 +395,10 @@ export async function tickAirport(env, icao) {
         features.pred_eta_ts = predEtaTs;
         const rec = {
           id: ac.id, callsign: ac.callsign, lockTs: now, lockOct: octantOf(ac.brgFromField),
-          predRunway: ac.runway, rawEtaTs, predEtaTs,
+          predRunway: rwy, rawEtaTs, predEtaTs,
           lastSeen: now, sample: null, features,
+          regs: ac.ownRegion ? [ac.ownRegion] : [],
+          ...(ac.ownHint ? { ownEx: 1 } : {}),
         };
         open.set(ac.id, rec);
         locked++;
@@ -388,9 +407,19 @@ export async function tickAirport(env, icao) {
     }
 
     o.lastSeen = now;
+    // The regions it passes through on its way in, and whether any of them
+    // would leave it out of the sequence (engine/ownership.js).
+    if (ac.ownRegion) {
+      o.regs = o.regs || [];
+      if (!o.regs.includes(ac.ownRegion) && o.regs.length < 24) o.regs.push(ac.ownRegion);
+    }
+    if (ac.ownHint) o.ownEx = 1;
     // Another airport's traffic after all — established on LaGuardia's final,
     // or down at Newark: void, it was never ours to grade.
-    if (ac.otherField) { open.delete(ac.id); voided++; continue; }
+    if (ac.otherField) {
+      learnOwn(own, regionsOf(o), ac.otherField.icao, !!o.ownEx); ownDirty = true;
+      open.delete(ac.id); voided++; continue;
+    }
     if (!ac.onGround && ac.agl != null && ac.agl < 4000 && ac.gs > 60) {
       // seq/rwy/ahead survive from the last sample that had them — phase wobble
       // right at the threshold must not erase the sequencing evidence.
@@ -403,7 +432,10 @@ export async function tickAirport(env, icao) {
 
     if (ac.onGround || (ac.agl != null && ac.agl < 120 && ac.gs < 90)) {
       if (onOurField(ac, airport)) down.push([o, now]);
-      else { open.delete(ac.id); voided++; } // came down at another airport
+      else { // came down at another airport
+        learnOwn(own, regionsOf(o), ac.otherField?.icao || null, !!o.ownEx); ownDirty = true;
+        open.delete(ac.id); voided++;
+      }
     } else if (o.sample && ac.vs > 700 && ac.distNm > o.sample.distNm + 0.4 && ac.agl > o.sample.agl + 250) {
       open.delete(ac.id); // go-around → void
     }
@@ -455,9 +487,10 @@ export async function tickAirport(env, icao) {
   const openJson = JSON.stringify({ arr: fromMap(open), dep: fromMap(openDep), log: landLog });
   if (openJson !== openSaved?.raw) stmts.push(saveOpenStateStmt(env.DB, icao, openJson));
   if (legacy) stmts.push(clearLegacyOpenStmt(env.DB, icao));
-  // The model only changes when a landing was graded this tick, so don't rewrite
-  // it every idle minute (that was ~1 write/min/hub of pure churn).
-  if (graded > 0) stmts.push(saveModelStmt(env.DB, model));
+  // The model only changes when a landing was graded or a lock's outcome taught
+  // the learned airspace something this tick, so don't rewrite it every idle
+  // minute (that was ~1 write/min/hub of pure churn).
+  if (graded > 0 || ownDirty) stmts.push(saveModelStmt(env.DB, model));
   if (cfgDirty) stmts.push(saveConfigStmt(env.DB, icao, cfg));
 
   if (stmts.length) await env.DB.batch(stmts);
@@ -466,5 +499,8 @@ export async function tickAirport(env, icao) {
     open: open.size + openDep.size,
     // What the traffic shows the field is using right now (for /api/health).
     config: { arr: arrEnds, dep: [...depW.keys()] },
+    // The learned airspace: regions learned, whether it is switched on, and its
+    // running score (landings here it would have left out / all landings here).
+    own: { on: engineOpts.ownOn, regions: Object.keys(own.cells).length, here: Math.round(own.gate.here), hereEx: Math.round(own.gate.hereEx), away: Math.round(own.gate.away), awayEx: Math.round(own.gate.awayEx) },
   };
 }

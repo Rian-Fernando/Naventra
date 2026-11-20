@@ -6,6 +6,21 @@ All notable changes to Naventra are documented here. The format is based on
 
 ## [Unreleased]
 
+### Learned airspace: whose traffic is it?
+- On a downwind leg past JFK, a LaGuardia arrival looks like any other inbound, so it sat
+  in JFK's sequence until it turned onto LaGuardia's final. Backtested on the tracker's
+  history, the part of the sky a flight is in (30° × 4 nm × 1,500 ft) tells them apart:
+  92% of the flights that later landed elsewhere were in regions that almost never feed
+  JFK, against 0.09% of JFK's own arrivals.
+- The 24/7 tracker now learns this online from clean outcomes — per region, where the
+  flights it followed through it came down — and the engine leaves a flight out of the
+  sequence while it is in a region that almost never feeds the airport. Excluded flights
+  are still locked and followed to touchdown, so the counts stay honest and correct
+  themselves after a configuration change.
+- It has to earn its switch: the exclusion is on only while fewer than 1 in 200 of the
+  flights that really landed here would have been left out (scored continuously, shown in
+  `/api/health`). It starts from nothing, so it switches itself on once it has seen enough.
+
 ### Only this airport's landings are graded
 - Found in the data: about half of the "JFK landings" the tracker graded were really at
   Newark, LaGuardia or Teterboro. Their arrivals descend through JFK's approach airspace,

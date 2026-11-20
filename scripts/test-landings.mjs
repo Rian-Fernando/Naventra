@@ -40,6 +40,7 @@ const { thresholds } = await import('../src/engine/departures.js');
 const { PredictionTracker } = await import('../src/engine/predictions.js');
 const { describeRoute } = await import('../src/lib/routeMatch.js');
 const { tickAirport } = await import('../worker/src/tracker.js');
+const own = await import('../src/engine/ownership.js');
 
 let failures = 0;
 const check = (name, cond, detail = '') => {
@@ -362,6 +363,97 @@ class MockD1 {
     clock += 600e3;
     out = await tick([parkedAt(lga, { id: 'd4', callsign: 'DAL2733', gs: 20 })]);
     check('worker: down at LaGuardia → voided, not graded', out.graded === 0 && out.voided === 1 && db.samples.length === 2, JSON.stringify(out));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+// ---------------------------------------------------------- learned airspace ---
+{
+  const { regionKey, emptyOwn, learnOwn, ownVerdict, ownEnabled, OWN_MIN_N } = own;
+  check('regions: 30° × 4 nm × 1,500 ft', regionKey(95, 9.9, 3100) === '3.2.2' && regionKey(-5, 40, 20000) === '11.6.5');
+  const t = emptyOwn();
+  for (let i = 0; i < OWN_MIN_N - 1; i++) learnOwn(t, '9.1.2', 'KLGA', false);
+  check('not enough locks seen: no verdict', ownVerdict(t, '9.1.2') === null);
+  learnOwn(t, '9.1.2', 'KLGA', false);
+  const v = ownVerdict(t, '9.1.2');
+  check('30 locks, all landed at LaGuardia: left out, LaGuardia named', v?.pHere === 0 && v.guess === 'KLGA' && v.n === 30);
+  learnOwn(t, '9.1.2', 'here', true);
+  check('one of 31 landed here (3.2%): no longer left out', ownVerdict(t, '9.1.2') === null);
+  for (let i = 0; i < 400; i++) learnOwn(t, '0.0.0', i % 2 ? 'here' : null, false);
+  const c = t.cells['0.0.0'];
+  check('region memory halves past 300 locks', c[0] + c[1] <= 300 && c[0] + c[1] > 140, `${c[0] + c[1]}`);
+  const g = emptyOwn();
+  for (let i = 0; i < 99; i++) learnOwn(g, '1.1.1', 'here', false);
+  check('switch stays off before 100 landings here are scored', !ownEnabled(g));
+  learnOwn(g, '1.1.1', 'here', false);
+  check('100 landings here, none left out: switched on', ownEnabled(g));
+  learnOwn(g, '1.1.1', 'here', true);
+  check('a landing here that would have been left out (1 in 101): switched off', !ownEnabled(g));
+}
+{
+  // The LaGuardia downwind 7 nm WNW of JFK, learned as "never lands at JFK".
+  const r31 = homeEnd(JFK, '31R');
+  const dw = { id: 'dw', callsign: 'AAL1389', ...fromLocal(JFK, -6.9, 2.4), altFt: 3600, gs: 205, track: 61, vs: 0, onGround: false };
+  const jfkA = onFinal(JFK, r31, 6, JFK.elevFt, { id: 'jA', callsign: 'JBU5' });
+  const { ann: probe } = annotate(JFK, [dw, jfkA]);
+  const p = probe.find((a) => a.id === 'dw');
+  const key = own.regionKey(p.brgFromField, p.distNm, p.agl);
+  const table = own.emptyOwn();
+  for (let i = 0; i < 40; i++) own.learnOwn(table, key, 'KLGA', false);
+  for (let i = 0; i < 120; i++) own.learnOwn(table, '6.1.0', 'here', false);
+  const off = annotate(JFK, [dw, jfkA], { own: table, ownOn: false }).ann;
+  const offDw = off.find((a) => a.id === 'dw');
+  check('switch off: hinted but still sequenced', offDw.ownHint?.guess === 'KLGA' && offDw.phase === 'APPROACH' && offDw.seqRwy != null);
+  const on = annotate(JFK, [dw, jfkA], { own: table, ownOn: true }).ann;
+  const onDw = on.find((a) => a.id === 'dw'), onA = on.find((a) => a.id === 'jA');
+  check('switch on: left out of the sequence', onDw.phase === 'ENROUTE' && onDw.seqRwy == null && onDw.likelyOther?.guess === 'KLGA');
+  check('…but keeps its own phase and a runway, so it is still locked', onDw.lockPhase === 'APPROACH' && !!onDw.lockRunway);
+  check('…and JFK\'s own arrival moves up to #1', onA.seqRwy === 1);
+  check('…and is not counted as a JFK arrival', atc.computeKpis(on, []).arrivals === 1);
+  // A flight lined up on our final in the same region is never left out.
+  const t2 = own.emptyOwn();
+  const finalHere = onFinal(JFK, r31, 6, JFK.elevFt, { id: 'f6' });
+  const { ann: fa } = annotate(JFK, [finalHere]);
+  const fk = own.regionKey(fa[0].brgFromField, fa[0].distNm, fa[0].agl);
+  for (let i = 0; i < 40; i++) own.learnOwn(t2, fk, 'KLGA', false);
+  const kept = annotate(JFK, [finalHere], { own: t2, ownOn: true }).ann[0];
+  check('on our final: never left out, whatever the region says', kept.phase === 'FINAL' && !kept.likelyOther);
+}
+{
+  // Worker: the learned airspace is updated from each lock's outcome and scored.
+  const db = new MockD1();
+  const env = { DB: db, ADSBLOL_API_KEY: 'sk-test' };
+  let traffic = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('aviationweather.gov')) return new Response(JSON.stringify([{ icaoId: 'KJFK', wdir: 300, wspd: 12, visib: '10+', clouds: [], fltCat: 'VFR', temp: 9, altim: 1020 }]), { status: 200 });
+    if (u.includes('adsb')) {
+      return new Response(JSON.stringify({ ac: traffic.map((t) => ({ hex: t.id, flight: t.callsign, lat: t.lat, lon: t.lon, alt_baro: t.onGround ? 'ground' : t.altFt, gs: t.gs, track: t.track, baro_rate: t.vs, category: 'A3', t: 'A320', seen_pos: 0 })) }), { status: 200 });
+    }
+    return new Response('not found', { status: 404 });
+  };
+  const r31 = homeEnd(JFK, '31R');
+  const tick = async (tracks) => { traffic = tracks; return tickAirport(env, 'KJFK'); };
+  try {
+    clock = Date.parse('2026-11-20T19:00:00Z');
+    const dw = { id: 'w1', callsign: 'DAL2603', ...fromLocal(JFK, -6.9, 2.4), altFt: 3600, gs: 205, track: 61, vs: 0, onGround: false };
+    let out = await tick([dw, onFinal(JFK, r31, 9, JFK.elevFt, { id: 'h1', callsign: 'JBU7' })]);
+    check('worker: both locked (learning starts from nothing)', out.locked === 2 && out.own.regions === 0 && out.own.on === false, JSON.stringify(out.own));
+    const openNow = JSON.parse(db.state.get('open:KJFK')).arr;
+    check('worker: the downwind flight records the region it is in', openNow.w1?.regs?.length === 1 && openNow.h1?.regs?.length === 0, JSON.stringify([openNow.w1?.regs, openNow.h1?.regs]));
+    clock += 120e3;
+    out = await tick([{ ...onFinal(JFK, LGA22, 3, nb(JFK, 'KLGA').elevFt), id: 'w1', callsign: 'DAL2603' }, onFinal(JFK, r31, 2, JFK.elevFt, { id: 'h1', callsign: 'JBU7' })]);
+    clock += 120e3;
+    const u = unit(r31.hdg), p = fromLocal(JFK, r31.x + u.x * r31.len * 0.7, r31.y + u.y * r31.len * 0.7);
+    out = await tick([{ id: 'h1', callsign: 'JBU7', lat: p.lat, lon: p.lon, altFt: 0, gs: 40, track: r31.hdg, vs: 0, onGround: true }]);
+    const m = JSON.parse(db.model.get('KJFK').rwy_json).own;
+    const lgaCell = Object.values(m.cells).find((c) => c[1] > 0);
+    check('worker: the LaGuardia flight taught its region "elsewhere — LGA"', !!lgaCell && lgaCell[2].KLGA === 1);
+    check('worker: a flight only ever on our final teaches no region…', !Object.values(m.cells).some((c) => c[0] > 0));
+    check('…but its landing is scored for the switch', m.gate.here === 1 && m.gate.away === 1 && m.gate.awayEx === 0, JSON.stringify(m.gate));
+    check('worker: health reports the learned airspace', out.own && out.own.regions === 1 && out.own.on === false, JSON.stringify(out.own));
   } finally {
     globalThis.fetch = realFetch;
   }

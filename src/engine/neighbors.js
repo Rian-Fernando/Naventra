@@ -106,6 +106,14 @@ function climbOutFit(ac, p, e, elevFt) {
   return { end: e.id };
 }
 
+// Lined up with one of our own runways (the generous test) — such a flight is
+// never handed to another airport, nor left out of our sequence.
+export function onOurFinal(ac, airport) {
+  if (ac?.lat == null || ac.altFt == null || (ac.vs ?? 0) >= 300) return false;
+  const p = toLocalNm(airport.lat, airport.lon, ac.lat, ac.lon);
+  return geometry(airport).home.some((e) => finalFit(ac, p, e, airport.elevFt, true));
+}
+
 const tag = (nb, role, rwy = null) => ({ icao: nb.icao, iata: nb.iata, name: nb.name, city: nb.city, lat: nb.lat, lon: nb.lon, role, rwy });
 
 // Which other airport, if any, this aircraft evidently belongs to. Returns

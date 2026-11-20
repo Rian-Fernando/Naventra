@@ -94,17 +94,21 @@ export class PredictionTracker {
 
       // Lock a prediction the moment the core commits the flight to approach.
       // Never before live weather has set the runway configuration — a lock
-      // against the default config would grade the wind, not the AI.
+      // against the default config would grade the wind, not the AI. A flight
+      // the learned airspace leaves out of the sequence is locked all the same
+      // (its own phase and runway), exactly as the 24/7 tracker does.
+      const lockPhase = ac.lockPhase || ac.phase;
+      const lockRunway = ac.runway || ac.lockRunway;
       if (!o && lockEnabled &&
-          (ac.phase === 'APPROACH' || (ac.phase === 'FINAL' && ac.distNm > 4)) &&
-          ac.runway && ac.etaMin != null && ac.distNm > 3.5 && ac.distNm < 26) {
+          (lockPhase === 'APPROACH' || (lockPhase === 'FINAL' && ac.distNm > 4)) &&
+          lockRunway && ac.etaMin != null && ac.distNm > 3.5 && ac.distNm < 26) {
         const rawEtaTs = now + ac.etaMin * 60000;
         this.open.set(ac.id, {
           callsign: ac.callsign,
           lockTs: now,
           lockDist: ac.distNm,
           lockOct: octantOf(ac.brgFromField),
-          predRunway: ac.runway,
+          predRunway: lockRunway,
           rawEtaTs,
           // learned airport-specific bias correction (see learning.js)
           predEtaTs: rawEtaTs + etaBiasSec(this.airport.icao) * 1000,

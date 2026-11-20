@@ -8,7 +8,8 @@ import { distNm, bearingDeg, velocityNmS, toLocalNm, cpa, angleDiff, windCompone
 import { airlineName } from '../data/airports.js';
 import { octantOf } from './octant.js';
 import { wakeCat, wakeSepNm, wakeDepartureSepSec, WAKE_LABEL } from './wake.js';
-import { neighborTraffic } from './neighbors.js';
+import { neighborTraffic, onOurFinal } from './neighbors.js';
+import { ownVerdict, regionKey } from './ownership.js';
 
 export const PHASES = ['GROUND', 'DEPARTURE', 'ENROUTE', 'ARRIVAL', 'APPROACH', 'FINAL'];
 
@@ -261,7 +262,8 @@ export function allocateRunways(airport, wx, observed = null, observedDep = null
 // `opts.otherMemory` (Map id → earlier neighbors.js verdict) and
 // `opts.departedHome(id)` let the browser keep a neighbouring airport's
 // climb-out tagged after it stops looking like one; the stateless tracker
-// passes neither.
+// passes neither. `opts.own` is the learned airspace (engine/ownership.js) and
+// `opts.ownOn` whether it has earned the right to leave flights out.
 export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = () => 0, depPlanner = null, opts = {}) {
   const arrRwys = runways.filter((r) => r.role.includes('ARR'));
   const fieldElev = airport.elevFt;
@@ -307,7 +309,22 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
       : null;
     // On this airport's surface (not parked at a neighbouring field in range).
     const atField = phase === 'GROUND' && d <= fieldR;
-    return { ...ac, distNm: d, brgFromField: (brgTo + 180) % 360, agl, phase, etaMin, closing, atField, otherField, wake: wakeCat(ac.type, ac.category) };
+    // Learned airspace: inbound in a part of the sky that almost never feeds our
+    // runways (a LaGuardia downwind past JFK). The hint is always worked out so
+    // the tracker can score it; the flight is only left out of the sequence
+    // once the hints have proved themselves (opts.ownOn). It keeps its own
+    // phase as lockPhase: the trackers still lock it, follow it down and learn.
+    const brgFromField = (brgTo + 180) % 360;
+    let ownRegion = null, ownHint = null, lockPhase = null;
+    if (opts.own && !otherField && (phase === 'ARRIVAL' || phase === 'APPROACH') && d > 3.5 && d < 26 && !onOurFinal(ac, airport)) {
+      ownRegion = regionKey(brgFromField, d, agl ?? 0);
+      ownHint = ownVerdict(opts.own, ownRegion);
+      if (ownHint && opts.ownOn) { lockPhase = phase; phase = 'ENROUTE'; }
+    }
+    return {
+      ...ac, distNm: d, brgFromField, agl, phase, etaMin, closing, atField, otherField,
+      ownRegion, ownHint, likelyOther: lockPhase ? ownHint : null, lockPhase, wake: wakeCat(ac.type, ac.category),
+    };
   });
 
   // Arrival sequencing: order the inbound flows by ETA and distribute across
@@ -339,6 +356,14 @@ export function annotateAircraft(aircraft, airport, runways, gateMap, priorFn = 
           : arrRwys[i % arrRwys.length].activeEnd)
       : null;
   });
+
+  // Flights left out on the learned airspace still get the runway they'd fly,
+  // so the trackers can lock them and learn where they really land.
+  if (arrRwys.length) {
+    for (const a of annotated) {
+      if (a.lockPhase) a.lockRunway = [...arrRwys].sort((r1, r2) => runwayScore(a, r1) - runwayScore(a, r2))[0].activeEnd;
+    }
+  }
 
   // Per-runway landing rank — the scorecard's "next to land" claim is judged
   // against the queue for that runway, not the global sequence.
@@ -552,6 +577,9 @@ export function generateEvents(prev, next, airport, runways, conflicts, prevConf
     }
 
     if (oldPhase === ac.phase) continue;
+    // In and out of the sequence on the learned airspace (engine/ownership.js)
+    // is not a new radar contact or a new slot — no repeat calls as it moves.
+    if (was?.likelyOther || ac.likelyOther) continue;
 
     switch (ac.phase) {
       case 'ARRIVAL':

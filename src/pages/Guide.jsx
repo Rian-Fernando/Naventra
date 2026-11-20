@@ -88,8 +88,8 @@ export default function Guide() {
 
         <h2>How the self-learning actually works</h2>
         <p>
-          "Self-learning" here means something specific and verifiable, not a buzzword. Two learned
-          parameters are updated by <b>every real landing the system grades</b>:
+          "Self-learning" here means something specific and verifiable, not a buzzword. Three learned
+          parameters are updated by <b>every real landing the system follows</b>:
         </p>
         <ol className="guide-steps">
           <li>
@@ -105,6 +105,16 @@ export default function Guide() {
             to the actual one. The signed error feeds an exponential moving average, which is subtracted
             from future estimates. If this airport's approaches systematically run, say, 40&nbsp;s slower
             than the raw model expects, the system learns that offset and stops making the same mistake.
+          </li>
+          <li>
+            <b>Whose traffic it is — learned airspace.</b> LaGuardia sits 9&nbsp;nm from JFK and Newark
+            18&nbsp;nm; their arrivals descend through JFK's approach airspace. Once one is on LaGuardia's
+            final the geometry says so, but on a downwind leg it looks like any other inbound. So the
+            24/7 tracker counts, for each part of the sky (30° × 4&nbsp;nm × 1,500&nbsp;ft), where the flights
+            it followed through it actually came down. A flight in a part of the sky that almost never feeds
+            JFK's runways is left out of JFK's sequence — but still followed to touchdown, so the counts stay
+            honest, and the exclusion only switches on while fewer than 1 in 200 flights that really landed
+            at JFK would have been left out.
           </li>
         </ol>
         <p>

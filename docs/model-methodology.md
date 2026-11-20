@@ -168,7 +168,31 @@ and a 2-point margin before it takes over). In the regression simulator the plan
 hands over from flow to the better expert and departure accuracy rises from ~45% to ~90%
 within two simulated hours.
 
-## 7. Safeguards summary
+## 7. Whose traffic is it — learned airspace
+
+Geometry (`src/engine/neighbors.js`) recognises another airport's traffic once it is on
+that airport's final, low over it, or lifting off it. Before that — a LaGuardia arrival on
+a downwind leg past JFK — it looks like any other inbound, and it sat in JFK's sequence.
+Terminal flows are fixed, though: in a backtest over the tracker's history (trained on the
+weeks before 6 Nov 2026, tested on the two weeks after), 92% of the flights locked as JFK
+arrivals that then landed elsewhere were, at lock, in a part of the sky (30° of bearing ×
+4 nm × 1,500 ft) where at most 3% of locked flights had ever landed at JFK; only 0.09% of
+JFK's own arrivals were (LAX 81% / 0.05%, Heathrow 75% / 0.08%). Adding the airline or the
+runway configuration did not help — they split the data too thin.
+
+`src/engine/ownership.js` learns this online in the tracker, from clean labels only (a
+touchdown on the field, or a flight seen landing at a named neighbour): per region, where
+the flights it followed **through** that region came down — every region on the way in,
+because the exclusion applies wherever a flight is, not only where it was first locked. A
+flight in a region with at least 30 such flights and at most 3% landing here is left out
+of the sequence, KPIs and decision feed — but it is still locked and followed to
+touchdown, so a region that starts feeding the airport (a configuration change) is back
+after a couple of landings. And it has to earn its switch: every outcome is scored on
+whether the flight would have been left out at any point, and the exclusion is on only
+while that happened to fewer than 1 in 200 of at least 100 flights that landed here. It
+starts from nothing (no noisy history) and is reported in `/api/health` (`own`).
+
+## 8. Safeguards summary
 
 - Self-tests (`scripts/test_train.py`) run before every training in CI.
 - Strict row validation; only clean, sufficient rows train the model — and only landings
@@ -177,5 +201,7 @@ within two simulated hours.
 - Per-airport adopt-gate; the expert engine is the safe default everywhere else.
 - Weekly retrain on the full history; the gate re-evaluates on the most recent 21 days.
 - The live tracker hot-reloads the model and alerts by email if it goes stale.
+- The learned airspace only leaves flights out while its own running score allows it, and
+  never stops following them.
 
 The model is **not** in the live control loop yet — by design, pending seasonal coverage.
